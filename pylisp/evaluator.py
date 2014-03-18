@@ -8,6 +8,7 @@ import operator
 from . import ir
 from .closure import Closure, PythonBuiltins
 from .utils import MethodDict
+from inspect import getfullargspec, ismethod
 
 
 class ArityError(Exception):
@@ -35,9 +36,10 @@ class FunctionDef(object):
             return self.evaluator.eval(self.body)
 
 
-def no_eval(fun):
-    setattr(fun, '_no_eval', True)
-    return fun
+# Introspection hacks for less recursion depth
+no_eval = object()
+re_eval = object()
+do_eval = object()
 
 
 class Evaluator(object):
@@ -48,7 +50,8 @@ class Evaluator(object):
     def __init__(self, closure=None):
         self._closures = [closure or Closure({
             '+': lambda *args: sum(args),
-            '-': lambda left, *right: reduce(lambda l, r: l - r, right, left),
+            '-': lambda left, *right: reduce(operator.sub, right, left),
+            '*': lambda *args: reduce(operator.mul, args),
             '=': operator.eq,
             '!=': operator.ne,
             '<': operator.lt,
@@ -62,6 +65,9 @@ class Evaluator(object):
             'quote': self.quote,
             'lambda': self.lambda_,
             'list': self.list,
+            'nil': None,
+            'car': self.car,
+            'cdr': self.cdr,
         }, parent=PythonBuiltins())]
 
     def eval(self, code, *, closure=None):
@@ -69,9 +75,17 @@ class Evaluator(object):
         return self._eval(code, closure=closure)
 
     def _eval(self, node, *, closure=None):
-        if isinstance(node, ir.Node):
-            return self.ir_lookup.get(type(node))(
-                self, node, closure or self._closures[-1])
+        get = self.ir_lookup.get
+        closure = closure or self._closures[-1]
+        done = False
+
+        while isinstance(node, ir.Node) and not done:
+            node_type = type(node)
+            evaluator_method = get(node_type)
+            argspec = getfullargspec(evaluator_method)
+
+            node = evaluator_method(self, node, closure)
+            done = argspec.annotations.get('return') is not re_eval
 
         return node
 
@@ -86,22 +100,47 @@ class Evaluator(object):
 
     @ir_lookup.annotate(ir.List)
     def list(self, node, closure):
-        self._log.debug('list: %s', node)
-
         fun = node.body[0]
+
         if isinstance(fun, ir.Node):
             fun = self._eval(fun)
 
-        self._log.debug('fun: %s', fun)
+        # FIXME: make function evaluation sensible
+        try:
+            argspec = getfullargspec(fun)
+            annotations = argspec.annotations
 
-        if getattr(fun, '_no_eval', False):
-            return fun(*node.body[1:])
+        except TypeError:
+            annotations = None
 
-        return fun(*map(self._eval, node.body[1:]))
+        # Edge case, speeds up most calls
+        if not annotations:
+            return fun(*map(self._eval, node.body[1:]))
+
+        def eval_arg(name_arg):
+            name, arg = name_arg
+
+            if annotations.get(name) is no_eval:
+                return arg
+
+            return self._eval(arg)
+
+        args = argspec.args
+
+        if ismethod(fun):
+            # Strip 'self', 'cls' and such
+            args = args[1:]
+
+        value = fun(*map(eval_arg, zip(iter(args), node.body[1:])))
+
+        if annotations.get('return') is re_eval:
+            value = self._eval(value)
+
+        return value
 
     @ir_lookup.annotate(ir.Cons)
-    def cons(self, node, closure):
-        return self._eval(node.car)
+    def cons(self, node, closure) -> re_eval:
+        return node.car
 
     @ir_lookup.annotate(ir.Str)
     def str(self, node, closure):
@@ -115,45 +154,39 @@ class Evaluator(object):
     def number(self, node, closure):
         return node.value
 
-    @no_eval
-    def setbang(self, cons, value):
+    def setbang(self, cons: no_eval, value):
         if not isinstance(cons.car, ir.Symbol):
             raise TypeError("'{}' is not a symbol".format(cons.car))
 
         symbol = cons.car
 
         if symbol.name in self._closures[-1]:
-            self._closures[-1][symbol.name] = self._eval(value)
+            self._closures[-1][symbol.name] = value
 
         else:
             raise NameError("'{}' not defined".format(symbol.name))
 
-    @no_eval
-    def if_(self, pred, then, else_=ir.Nil):
-        if self._eval(pred):
-            return self._eval(then)
+    def if_(self, pred, then: no_eval, else_: no_eval =ir.Nil) -> re_eval:
+        if pred:
+            return then
 
         else:
-            return self._eval(else_)
+            return else_
 
-    @no_eval
-    def define(self, cons, value):
+    def define(self, cons: no_eval, value):
         if not isinstance(cons.car, ir.Symbol):
             raise TypeError("'{}' is not a symbol".format(cons.car))
 
         symbol = cons.car
+        self._closures[-1][symbol.name] = value
 
-        self._closures[-1][symbol.name] = self._eval(value)
-
-    @no_eval
-    def quote(self, value):
+    def quote(self, value: no_eval):
         if isinstance(value, ir.Cons):
             return value.car
 
         return value
 
-    @no_eval
-    def lambda_(self, args, body):
+    def lambda_(self, args: no_eval, body: no_eval):
         return FunctionDef(
             args=list(map(lambda cons: cons.car.name, args.car)),
             body=body, evaluator=self,
@@ -162,7 +195,6 @@ class Evaluator(object):
 
     @contextmanager
     def over(self, closure):
-        self._log.debug(closure)
         self._closures.append(closure)
         yield
         self._closures.pop()
@@ -175,4 +207,14 @@ class Evaluator(object):
 
         return list_
 
+    def car(self, list_):
+        return list_[0].car
 
+    def cdr(self, list_):
+        # FIXME: This should be as simple as returning the cdr
+        new_list_ = ir.List()
+
+        for cons in list_[0].cdr:
+            new_list_.append(cons)
+
+        return new_list_
