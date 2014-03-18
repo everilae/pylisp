@@ -20,7 +20,6 @@ What "Works"
 Not much.
 
 ```lisp
-python3 -m pylis.repl
 Silly Python Lisp 0 on Linux
 >>> (define factorial (lambda (x) (if (<= x 0) 1 (* x (factorial (- x 1))))))
 None
