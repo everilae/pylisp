@@ -21,9 +21,14 @@ Not much.
 
 ```lisp
 Silly Python Lisp 0 on Linux
+>>> ; Recursion depth is really really shallow at the moment, values like 70 will crash
+None
 >>> (define factorial (lambda (x) (if (<= x 0) 1 (* x (factorial (- x 1))))))
 None
 >>> (factorial 30)
 265252859812191058636308480000000
->>> ; Recursion depth is really really shallow at the moment, values like 70 will crash
+>>> ; Calling python builtins is possible with a twist
+None
+>>> (print (str.upper "hello, world!"))
+HELLO, WORLD!
 ```
