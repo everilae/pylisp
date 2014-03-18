@@ -49,6 +49,7 @@ class Evaluator(object):
         self._closures = [closure or Closure({
             '+': lambda *args: sum(args),
             '-': lambda left, *right: reduce(lambda l, r: l - r, right, left),
+            '*': lambda *args: reduce(operator.mul, args),
             '=': operator.eq,
             '!=': operator.ne,
             '<': operator.lt,
