@@ -35,8 +35,8 @@ class FunctionDef(object):
             return self.evaluator.eval(self.body)
 
 
-def no_eval(fun):
-    setattr(fun, '_no_eval', True)
+def special(fun):
+    setattr(fun, '_special', True)
     return fun
 
 
@@ -63,6 +63,8 @@ class Evaluator(object):
             'quote': self.quote,
             'lambda': self.lambda_,
             'list': self.list,
+            'car': self.car,
+            'cdr': self.cdr,
         }, parent=PythonBuiltins())]
 
     def eval(self, code, *, closure=None):
@@ -85,24 +87,21 @@ class Evaluator(object):
 
         return value
 
-    @ir_lookup.annotate(ir.List)
-    def list(self, node, closure):
-        self._log.debug('list: %s', node)
+    @ir_lookup.annotate(ir.Cons)
+    def sexpr(self, cons, closure):
+        self._log.debug('list: %s', cons)
 
-        fun = node.head.car
+        values = (c.car for c in cons)
+        fun = next(values)
         if isinstance(fun, ir.Node):
             fun = self._eval(fun)
 
         self._log.debug('fun: %s', fun)
 
-        if getattr(fun, '_no_eval', False):
-            return fun(*tuple(iter(node.head.cdr)))
+        if getattr(fun, '_special', False):
+            return fun(*tuple(values))
 
-        return fun(*tuple(map(self._eval, iter(node.head.cdr))))
-
-    @ir_lookup.annotate(ir.Cons)
-    def cons(self, node, closure):
-        return self._eval(node.car)
+        return fun(*tuple(map(self._eval, values)))
 
     @ir_lookup.annotate(ir.Str)
     def str(self, node, closure):
@@ -116,12 +115,10 @@ class Evaluator(object):
     def number(self, node, closure):
         return node.value
 
-    @no_eval
-    def setbang(self, cons, value):
-        if not isinstance(cons.car, ir.Symbol):
-            raise TypeError("'{}' is not a symbol".format(cons.car))
-
-        symbol = cons.car
+    @special
+    def setbang(self, symbol, value):
+        if not isinstance(symbol, ir.Symbol):
+            raise TypeError("'{}' is not a symbol".format(symbol))
 
         if symbol.name in self._closures[-1]:
             self._closures[-1][symbol.name] = self._eval(value)
@@ -129,7 +126,7 @@ class Evaluator(object):
         else:
             raise NameError("'{}' not defined".format(symbol.name))
 
-    @no_eval
+    @special
     def if_(self, pred, then, else_=ir.Nil):
         if self._eval(pred):
             return self._eval(then)
@@ -137,23 +134,18 @@ class Evaluator(object):
         else:
             return self._eval(else_)
 
-    @no_eval
-    def define(self, cons, value):
-        if not isinstance(cons.car, ir.Symbol):
-            raise TypeError("'{}' is not a symbol".format(cons.car))
-
-        symbol = cons.car
+    @special
+    def define(self, symbol, value):
+        if not isinstance(symbol, ir.Symbol):
+            raise TypeError("'{}' is not a symbol".format(symbol))
 
         self._closures[-1][symbol.name] = self._eval(value)
 
-    @no_eval
+    @special
     def quote(self, value):
-        if isinstance(value, ir.Cons):
-            return value.car
-
         return value
 
-    @no_eval
+    @special
     def lambda_(self, args, body):
         return FunctionDef(
             args=list(map(lambda cons: cons.car.name, args.car)),
@@ -163,17 +155,22 @@ class Evaluator(object):
 
     @contextmanager
     def over(self, closure):
-        self._log.debug(closure)
         self._closures.append(closure)
         yield
         self._closures.pop()
 
     def list(self, *args):
-        list_ = ir.List()
+        # Using SExpr node makes constructing a list easier;
+        # It handles conversions to cons etc
+        list_ = ir.SExpr()
 
         for arg in args:
             list_.append(arg)
 
-        return list_
+        return list_.head
 
+    def car(self, cons):
+        return cons.car
 
+    def cdr(self, cons):
+        return cons.cdr

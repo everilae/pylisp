@@ -30,24 +30,32 @@ class Package(NodeCollection):
     pass
 
 
-class List(Node):
+class SExpr(Node):
+    """
+    SExpr is a compile time helper type that makes handling conses easier.
+    It keeps track of current expressions head and tail in order to allow for
+    easy appending.
+    """
+
     def __init__(self, cons=None, lineno=None, col_offset=None):
         self.head = cons
         self.tail = cons
-
         super().__init__(lineno=lineno, col_offset=col_offset)
 
     def __repr__(self):
         if self.head:
-            return '({})'.format(' '.join(map(repr, iter(self.head))))
+            return repr(self.head)
 
         return '()'
 
     def append(self, node):
-        if not isinstance(node, Cons):
-            node = Cons(node,
-                        lineno=getattr(node, 'lineno', None),
-                        col_offset=getattr(node, 'col_offset', None))
+        lineno = getattr(node, 'lineno', None)
+        col_offset = getattr(node, 'col_offset', None)
+
+        if isinstance(node, SExpr):
+            node = node.head
+
+        node = Cons(node, lineno=lineno, col_offset=lineno)
 
         if not self.head:
             self.head = node
@@ -57,9 +65,6 @@ class List(Node):
             self.tail.cdr = node
             self.tail = node
 
-    def __iter__(self):
-        yield from self.first
-
 
 class Cons(Node):
     def __init__(self, car, cdr=None, lineno=None, col_offset=None):
@@ -68,10 +73,8 @@ class Cons(Node):
         super().__init__(lineno=lineno, col_offset=col_offset)
 
     def __repr__(self):
-        return self.car.__repr__()
-
-    def __str__(self):
-        return self.car.__str__()
+        return '({})'.format(
+            ' '.join(map(lambda cons: repr(cons.car), iter(self))))
 
     def __iter__(self):
         cons = self

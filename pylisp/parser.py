@@ -63,7 +63,8 @@ class Parser(object):
 
     def _pop_quote(self):
         if getattr(self.ir[-1], 'is_quote', False):
-            self.ir.pop()
+            sexpr = self.ir.pop()
+            self.ir[-1].append(sexpr.head)
 
     @parsers.annotate(';')
     def comment(self):
@@ -78,18 +79,19 @@ class Parser(object):
 
     @parsers.annotate('(')
     def begin_list(self, quote=False):
-        list_ = ir.List(lineno=self._lineno, col_offset=self._linepos)
+        list_ = ir.SExpr(lineno=self._lineno, col_offset=self._linepos)
         setattr(list_, 'is_quote', quote)
-        self.ir[-1].append(list_)
         self.ir.append(list_)
         self._linepos += 1
 
     @parsers.annotate(')')
     def end_list(self):
-        if not isinstance(self.ir[-1], ir.List):
+        if not isinstance(self.ir[-1], ir.SExpr):
             raise self._syntax_error('unexpected end of list')
 
-        self.ir.pop()
+        sexpr = self.ir.pop()
+        # Push cons to intermediate results
+        self.ir[-1].append(sexpr.head)
         self._pop_quote()
         self._linepos += 1
 
