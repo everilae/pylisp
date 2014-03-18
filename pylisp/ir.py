@@ -32,9 +32,9 @@ class List(NodeCollection):
         return '({})'.format(super().__repr__())
 
     def append(self, node):
-        cons = ir.Cons(node,
-                       lineno=getattr(node, 'lineno', None),
-                       col_offset=getattr(node, 'col_offset', None))
+        cons = Cons(node,
+                    lineno=getattr(node, 'lineno', None),
+                    col_offset=getattr(node, 'col_offset', None))
 
         if self.body:
             self.body[-1].cdr = cons
@@ -48,7 +48,7 @@ Nil = Node()
 class Cons(Node):
     def __init__(self, car, cdr=None, lineno=None, col_offset=None):
         self.car = car
-        self.cdr = cdr or ir.Nil
+        self.cdr = cdr or Nil
         super().__init__(lineno=lineno, col_offset=col_offset)
 
     def __repr__(self):
@@ -76,7 +76,7 @@ class Symbol(Node):
         return self.name
 
     def __eq__(self, other):
-        return isinstance(other, ir.Symbol) and self.name == other.name
+        return isinstance(other, Symbol) and self.name == other.name
 
 
 class Number(Node):

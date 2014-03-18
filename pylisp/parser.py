@@ -45,8 +45,13 @@ class Parser(object):
     def _parse(self):
         chr_ = self._line[self._linepos]
 
-        while chr_ in string.whitespace:
+        while  chr_ in string.whitespace:
             self._linepos += 1
+
+            if self._linepos >= self._linelen:
+                # Line ended with whitespace
+                return
+
             chr_ = self._line[self._linepos]
             continue
 
