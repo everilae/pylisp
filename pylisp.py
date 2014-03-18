@@ -139,7 +139,7 @@ class ir(object):
             return self.name
 
         def __eq__(self, other):
-            return isinstance(other, ir.Symbol) and self.name == other.name 
+            return isinstance(other, ir.Symbol) and self.name == other.name
 
 
     class Number(Node):
@@ -196,14 +196,14 @@ class Parser(object):
         return self.ir[-1]
 
     def _parse(self):
+        chr_ = self._line[self._linepos]
+
+        while chr_ in string.whitespace:
+            self._linepos += 1
             chr_ = self._line[self._linepos]
+            continue
 
-            while chr_ in string.whitespace:
-                self._linepos += 1
-                chr_ = self._line[self._linepos]
-                continue
-
-            self.parsers.get(chr_, Parser.create_symbol)(self)
+        self.parsers.get(chr_, Parser.create_symbol)(self)
 
     def _syntax_error(self, msg):
         return SyntaxError('{}, line {} col {}'.format(
