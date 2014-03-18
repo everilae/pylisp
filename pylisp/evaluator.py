@@ -89,16 +89,16 @@ class Evaluator(object):
     def list(self, node, closure):
         self._log.debug('list: %s', node)
 
-        fun = node.body[0]
+        fun = node.head.car
         if isinstance(fun, ir.Node):
             fun = self._eval(fun)
 
         self._log.debug('fun: %s', fun)
 
         if getattr(fun, '_no_eval', False):
-            return fun(*node.body[1:])
+            return fun(*tuple(iter(node.head.cdr)))
 
-        return fun(*map(self._eval, node.body[1:]))
+        return fun(*tuple(map(self._eval, iter(node.head.cdr))))
 
     @ir_lookup.annotate(ir.Cons)
     def cons(self, node, closure):

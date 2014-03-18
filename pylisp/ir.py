@@ -30,9 +30,18 @@ class Package(NodeCollection):
     pass
 
 
-class List(NodeCollection):
+class List(Node):
+    def __init__(self, cons=None, lineno=None, col_offset=None):
+        self.head = cons
+        self.tail = cons
+
+        super().__init__(lineno=lineno, col_offset=col_offset)
+
     def __repr__(self):
-        return '({})'.format(super().__repr__())
+        if self.head:
+            return '({})'.format(' '.join(map(repr, iter(self.head))))
+
+        return '()'
 
     def append(self, node):
         if not isinstance(node, Cons):
@@ -40,13 +49,16 @@ class List(NodeCollection):
                         lineno=getattr(node, 'lineno', None),
                         col_offset=getattr(node, 'col_offset', None))
 
-        if self.body:
-            self.body[-1].cdr = node
+        if not self.head:
+            self.head = node
+            self.tail = node
 
-        super().append(node)
+        else:
+            self.tail.cdr = node
+            self.tail = node
 
     def __iter__(self):
-        yield from self[0]
+        yield from self.first
 
 
 class Cons(Node):
