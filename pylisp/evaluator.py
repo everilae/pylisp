@@ -148,7 +148,7 @@ class Evaluator(object):
     @special
     def lambda_(self, args, body):
         return FunctionDef(
-            args=list(map(lambda cons: cons.car.name, args.car)),
+            args=list(map(lambda cons: cons.car.name, args)),
             body=body, evaluator=self,
             closure=self._closures[-1]
         )
