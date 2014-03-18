@@ -213,6 +213,10 @@ class Parser(object):
         if getattr(self.ir[-1], 'is_quote', False):
             self.ir.pop()
 
+    @parsers.annotate(';')
+    def comment(self):
+        self._linepos = self._linelen
+
     @parsers.annotate("'")
     def quote(self):
         quote = ir.Symbol('quote', lineno=self._lineno,
@@ -354,6 +358,8 @@ class Evaluator(object):
 
     @ir_lookup.annotate(ir.Package)
     def module(self, node, closure):
+        value = None
+
         for expr in node.body:
             value = self._eval(expr)
 
@@ -404,7 +410,7 @@ class Evaluator(object):
             raise NameError("'{}' not defined".format(symbol.name))
 
     @no_eval
-    def if_(self, pred, then, else_):
+    def if_(self, pred, then, else_=ir.Nil):
         if self._eval(pred):
             return self._eval(then)
 
@@ -516,6 +522,9 @@ if __name__ == '__main__':
         except EOFError:
             print('quit')
             break
+
+        if not source:
+            continue
 
         try:
             code = Parser(source).parse()
