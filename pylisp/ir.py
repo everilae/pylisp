@@ -14,13 +14,16 @@ class NodeCollection(Node):
         super().__init__(lineno=lineno, col_offset=col_offset)
 
     def __repr__(self):
-        return ' '.join(map(repr, self.body))
+        return ' '.join(map(repr, self))
 
     def append(self, node):
         self.body.append(node)
 
     def __iter__(self):
         yield from self.body
+
+    def __getitem__(self, index):
+        return self.body[index]
 
 
 class Package(NodeCollection):
@@ -32,17 +35,18 @@ class List(NodeCollection):
         return '({})'.format(super().__repr__())
 
     def append(self, node):
-        cons = Cons(node,
-                    lineno=getattr(node, 'lineno', None),
-                    col_offset=getattr(node, 'col_offset', None))
+        if not isinstance(node, Cons):
+            node = Cons(node,
+                        lineno=getattr(node, 'lineno', None),
+                        col_offset=getattr(node, 'col_offset', None))
 
         if self.body:
-            self.body[-1].cdr = cons
+            self.body[-1].cdr = node
 
-        super().append(cons)
+        super().append(node)
 
-
-Nil = Node()
+    def __iter__(self):
+        yield from self[0]
 
 
 class Cons(Node):
@@ -56,6 +60,13 @@ class Cons(Node):
 
     def __str__(self):
         return self.car.__str__()
+
+    def __iter__(self):
+        cons = self
+
+        while cons is not Nil:
+            yield cons
+            cons = cons.cdr
 
 
 class Str(Node):
@@ -86,3 +97,6 @@ class Number(Node):
 
     def __repr__(self):
         return '{}'.format(self.value)
+
+
+Nil = Symbol('nil')
