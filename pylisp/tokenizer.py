@@ -39,16 +39,19 @@ class SYMBOL(Token):
 
 class Tokenizer(object):
 
-    LISTOPS = {'(', ')'}
-    OPS = LISTOPS.union({';', '\''})
-    STRING = '"'
-    NONSYMBOL = {'(', ')', ';'}
-    WHITESPACE = frozenset(string.whitespace)
+    _STRING = '"'
+    _QUOTE = '\''
+    _COMMENT = ';'
+    _LPAR = '('
+    _RPAR = ')'
+
+    _OPS = {_LPAR, _RPAR, _COMMENT, _QUOTE}
+    _NOTSYMBOL = {_LPAR, _RPAR, _COMMENT}
+    _WHITESPACE = frozenset(string.whitespace)
 
     _OP_LOOKUP = {
         '(': LPAR,
         ')': RPAR,
-        ';': COMMENT,
         '\'': QUOTE,
     }
 
@@ -122,24 +125,7 @@ class Tokenizer(object):
         for chr_ in block:
             self._linepos += 1
 
-            if self._comment:
-                self._acc_comment(chr_)
-
-            elif chr_ == self.STRING:
-                if self._string:
-                    if not self._string[0][-1] == '\\':
-                        yield self._flush_string()
-
-                    else:
-                        self._acc_string(chr_)
-
-                else:
-                    if self._symbol:
-                        yield self._flush_symbol()
-
-                    self._new_string()
-
-            elif chr_ == '\n':
+            if chr_ == '\n':
                 if self._comment:
                     yield self._flush_comment()
 
@@ -153,18 +139,41 @@ class Tokenizer(object):
                 self._linepos = 0
                 continue
 
+            elif self._comment:
+                self._acc_comment(chr_)
+
+            elif chr_ == self._STRING:
+                if self._string:
+                    if not self._string[0][-1] == '\\':
+                        yield self._flush_string()
+
+                    else:
+                        self._acc_string(chr_)
+
+                else:
+                    if self._symbol:
+                        yield self._flush_symbol()
+
+                    self._new_string()
+
             elif self._string:
                 self._acc_string(chr_)
 
-            elif chr_ in self.WHITESPACE:
+            elif chr_ == self._COMMENT:
+                if self._symbol:
+                    yield self._flush_symbol()
+
+                self._new_comment()
+
+            elif chr_ in self._WHITESPACE:
                 if self._symbol:
                     yield self._flush_symbol()
 
                 continue
 
-            elif chr_ in self.OPS:
+            elif chr_ in self._OPS:
                 if self._symbol:
-                    if chr_ in self.LISTOPS:
+                    if chr_ in self._NOTSYMBOL:
                         yield self._flush_symbol()
 
                     else:
