@@ -30,7 +30,7 @@ class Parser(object):
             parser(self, token)
 
         if not isinstance(self.ir[-1], ir.Package):
-            raise self._syntax_error("unexpected EOF")
+            raise SyntaxError("unexpected EOF")
 
         return self.ir[-1]
 
