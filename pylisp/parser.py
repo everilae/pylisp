@@ -43,7 +43,7 @@ class Parser(object):
     def quote(self, token):
         quote = ir.Symbol('quote', lineno=token.lineno,
                           col_offset=token.linepos)
-        self.begin_list(quote=True)
+        self.begin_list(token, quote=True)
         self.ir[-1].append(quote)
 
     @parsers.annotate(LPAR)
