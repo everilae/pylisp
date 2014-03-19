@@ -58,27 +58,34 @@ class FunctionDef(object):
         cons = self.body
         head = cons
         prev = []
-        specials = {'if'}
+        specials = {self.evaluator.if_, self.evaluator.let}
 
         while cons is not ir.Nil:
             if type(cons.car) is ir.Symbol and pos == 0:
-                if cons.car.name not in specials:
-                    calls += 1
-
                 try:
                     value = self.closure[cons.car.name]
 
                 except NameError:
-                    # Free variables
-                    pass
+                    # Free variables, no way to know what happens with these
+                    calls += 1
 
                 else:
-                    if value is self and calls == 1:
+                    if value is self and calls == 0:
+                        # Tail position!
                         cons.car = ir.Symbol(
                             'recur',
                             lineno=cons.car.lineno,
                             col_offset=cons.car.col_offset
                         )
+
+                    if value in specials:
+                        # FIXME: closer inspection is required, since first
+                        # argument to 'if' is not tail position, variable
+                        # binding in 'let' is not tail position etc...
+                        pass
+
+                    else:
+                        calls += 1
 
             elif type(cons.car) is ir.Cons:
                 prev.append((head, cons, pos, calls))
