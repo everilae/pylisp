@@ -122,7 +122,10 @@ class Tokenizer(object):
         for chr_ in block:
             self._linepos += 1
 
-            if chr_ == self.STRING:
+            if self._comment:
+                self._acc_comment(chr_)
+
+            elif chr_ == self.STRING:
                 if self._string:
                     if not self._string[0][-1] == '\\':
                         yield self._flush_string()
@@ -152,9 +155,6 @@ class Tokenizer(object):
 
             elif self._string:
                 self._acc_string(chr_)
-
-            elif self._comment:
-                self._acc_comment(chr_)
 
             elif chr_ in self.WHITESPACE:
                 if self._symbol:
