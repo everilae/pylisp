@@ -19,7 +19,7 @@ class Parser(object):
         self.tokenizer = Tokenizer(self.source)
 
     def parse(self):
-        self._log.debug('parsing %r', self.source)
+        self._log.debug('parsing: %r', self.source)
 
         for token in self.tokenizer.tokenize():
             parser = self.parsers.get(type(token))
@@ -27,6 +27,7 @@ class Parser(object):
             if parser is None:
                 raise ValueError('unexpected token {!r}'.format(token))
 
+            self._log.debug('token: %s', token)
             parser(self, token)
 
         if not isinstance(self.ir[-1], ir.Package):

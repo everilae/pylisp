@@ -6,7 +6,7 @@ from functools import reduce
 from contextlib import contextmanager
 import operator
 from . import ir
-from .closure import Closure, PythonBuiltins
+from .env import Environment, PythonBuiltins
 from .utils import MethodDict
 
 _log = logging.getLogger(__name__)
@@ -21,15 +21,15 @@ class Recur(object):
         self.args = args
 
 
-class FunctionDef(object):
+class Closure(object):
 
     def __init__(self, name=None, args=None, body=None,
-                 evaluator=None, closure=None):
+                 evaluator=None, env=None):
         self.name = name
         self.args = args
         self.body = body
         self.evaluator = evaluator
-        self.closure = closure
+        self.env = env
 
         self._tco = False
 
@@ -41,13 +41,13 @@ class FunctionDef(object):
         if not self._tco:
             self.optimize_tail_calls()
 
-        closure = Closure(dict(zip(self.args, args)), parent=self.closure)
+        env = Environment(dict(zip(self.args, args)), parent=self.env)
 
-        with self.evaluator.over(closure):
+        with self.evaluator.over(env):
             value = self.evaluator.eval(self.body)
 
             while type(value) is Recur:
-                closure.update(zip(self.args, value.args))
+                env.update(zip(self.args, value.args))
                 value = self.evaluator.eval(self.body)
 
             return value
@@ -69,7 +69,7 @@ class FunctionDef(object):
         while cons is not ir.Nil:
             if type(cons.car) is ir.Symbol and pos == 0:
                 try:
-                    value = self.closure[cons.car.name]
+                    value = self.env[cons.car.name]
 
                 except NameError:
                     # Free variables, no way to know what happens with these
@@ -86,7 +86,7 @@ class FunctionDef(object):
                             not prev or
                             # Previous call was special and Self is in correct
                             # position
-                            prev[-1][2] in specials[self.closure[prev[-1][0].car.name]]
+                            prev[-1][2] in specials[self.env[prev[-1][0].car.name]]
                         )
                     ):
                         # Tail position!
@@ -128,8 +128,8 @@ class Evaluator(object):
     _log = logging.getLogger('Evaluator')
     ir_lookup = MethodDict()
 
-    def __init__(self, closure=None):
-        self._closures = [closure or Closure({
+    def __init__(self, env=None):
+        self._envs = [env or Environment({
             '+': lambda *args: sum(args),
             '-': lambda left, *right: reduce(lambda l, r: l - r, right, left),
             '*': lambda *args: reduce(operator.mul, args),
@@ -151,54 +151,48 @@ class Evaluator(object):
             'cdr': self.cdr,
             'recur': self.recur,
             'let': self.let,
+            'cons': self.cons,
         }, parent=PythonBuiltins())]
 
-    def eval(self, code, *, closure=None):
+    def eval(self, code, *, env=None):
         self._log.debug('eval: %s', code)
-        return self._eval(code, closure=closure)
+        if isinstance(code, ir.Node):
+            node_evaluator = self.ir_lookup.get(type(code))
+            return node_evaluator(self, code, env or self._envs[-1])
 
-    def _eval(self, node, *, closure=None):
-        if isinstance(node, ir.Node):
-            return self.ir_lookup.get(type(node))(
-                self, node, closure or self._closures[-1])
-
-        return node
+        return code
 
     @ir_lookup.annotate(ir.Package)
-    def module(self, node, closure):
+    def package(self, node, env):
         value = None
 
         for expr in node.body:
-            value = self._eval(expr)
+            value = self.eval(expr)
 
         return value
 
     @ir_lookup.annotate(ir.Cons)
-    def sexpr(self, cons, closure):
-        self._log.debug('list: %s', cons)
-
+    def sexpr(self, cons, env):
         values = (c.car for c in cons)
         fun = next(values)
         if isinstance(fun, ir.Node):
-            fun = self._eval(fun)
-
-        self._log.debug('fun: %s', fun)
+            fun = self.eval(fun)
 
         if getattr(fun, '_special', False):
             return fun(*tuple(values))
 
-        return fun(*tuple(map(self._eval, values)))
+        return fun(*tuple(map(self.eval, values)))
 
     @ir_lookup.annotate(ir.Str)
-    def str(self, node, closure):
+    def str(self, node, env):
         return node.value
 
     @ir_lookup.annotate(ir.Symbol)
-    def symbol(self, node, closure):
-        return closure[node.name]
+    def symbol(self, node, env):
+        return env[node.name]
 
     @ir_lookup.annotate(ir.Number)
-    def number(self, node, closure):
+    def number(self, node, env):
         return node.value
 
     @special
@@ -206,27 +200,27 @@ class Evaluator(object):
         if not isinstance(symbol, ir.Symbol):
             raise TypeError("'{}' is not a symbol".format(symbol))
 
-        if symbol.name in self._closures[-1]:
-            self._closures[-1][symbol.name] = self._eval(value)
+        if symbol.name in self._envs[-1]:
+            self._envs[-1][symbol.name] = self.eval(value)
 
         else:
             raise NameError("'{}' not defined".format(symbol.name))
 
     @special
     def if_(self, pred, then, else_=ir.Nil):
-        if self._eval(pred):
-            return self._eval(then)
+        if self.eval(pred):
+            return self.eval(then)
 
         else:
-            return self._eval(else_)
+            return self.eval(else_)
 
     @special
     def define(self, symbol, value):
         if not isinstance(symbol, ir.Symbol):
             raise TypeError("'{}' is not a symbol".format(symbol))
 
-        value = self._eval(value)
-        self._closures[-1][symbol.name] = value
+        value = self.eval(value)
+        self._envs[-1][symbol.name] = value
 
     @special
     def quote(self, value):
@@ -234,21 +228,21 @@ class Evaluator(object):
 
     @special
     def lambda_(self, args, body):
-        return FunctionDef(
+        return Closure(
             args=tuple(map(lambda cons: cons.car.name, args)) if args is not ir.Nil else (),
             body=body, evaluator=self,
-            closure=self._closures[-1]
+            env=self._envs[-1]
         )
 
     @special
     def recur(self, *args):
-        return Recur(tuple(map(self._eval, args)))
+        return Recur(tuple(map(self.eval, args)))
 
     @contextmanager
-    def over(self, closure):
-        self._closures.append(closure)
+    def over(self, env):
+        self._envs.append(env)
         yield
-        self._closures.pop()
+        self._envs.pop()
 
     def list(self, *args):
         # Using SExpr node makes constructing a list easier;
@@ -271,11 +265,14 @@ class Evaluator(object):
         def ivar(cons):
             while cons is not ir.Nil:
                 name = cons.car.name
-                value = self._eval(cons.cdr.car)
+                value = self.eval(cons.cdr.car)
                 yield (name, value)
                 cons = cons.cdr.cdr
 
-        closure = Closure(parent=self._closures[-1])
-        with self.over(closure):
-            closure.update(dict((k, v) for k, v in ivar(vars)))
-            return self._eval(body)
+        env = Environment(parent=self._envs[-1])
+        with self.over(env):
+            env.update(dict((k, v) for k, v in ivar(vars)))
+            return self.eval(body)
+
+    def cons(self, car, cdr):
+        return ir.Cons(car, cdr)

@@ -1,23 +1,33 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function
 
+from argparse import ArgumentParser, FileType
+import sys
+import os
 import logging
 from .evaluator import Evaluator
 from .parser import Parser
 
 
 def repl():
-    #logging.basicConfig(level=logging.DEBUG)
+    argparser = ArgumentParser("Silly Python Lisp")
+    argparser.add_argument(
+        '-d', '--debug', action='store_true',
+        help="debug output")
+    argparser.add_argument(
+        'file', type=FileType('r'), nargs='?',
+        help="program read from file")
+
+    args = argparser.parse_args()
+    e = Evaluator()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
     log = logging.getLogger(__name__)
 
-    import os
-
-    if False:
-        from argparse import ArgumentParser, FileType
-
-        argparser = ArgumentParser()
-        argparser.add_argument('file', type=FileType('r'))
-        args = argparser.parse_args()
+    if args.file:
+        sys.exit(e.eval(Parser(args.file).parse()))
 
     try:
         import readline
@@ -33,15 +43,10 @@ def repl():
         del histfile
 
     except ImportError:
-        log.info('readline not available')
-
-    e = Evaluator()
-
-    if False and args.file:
-        import sys
-        sys.exit(e.eval(Parser(args.file).parse()))
+        pass
 
     print('Silly Python Lisp 0 on {[0]}'.format(os.uname()))
+
     while True:
         try:
             source = input('>>> ')
@@ -49,6 +54,9 @@ def repl():
         except EOFError:
             print('quit')
             break
+
+        except KeyboardInterrupt as ki:
+            continue
 
         if not source:
             continue
@@ -60,11 +68,19 @@ def repl():
             log.exception('Parser error')
             continue
 
+        except KeyboardInterrupt as ki:
+            print(ki)
+            continue
+
         try:
             print(e.eval(code))
 
         except Exception:
             log.exception('Evaluation error')
+            continue
+
+        except KeyboardInterrupt as ki:
+            print(ki)
             continue
 
 if __name__ == '__main__':

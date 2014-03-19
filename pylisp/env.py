@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 
 import builtins
 
+
 class PythonBuiltins(object):
 
     def __getitem__(self, name):
@@ -28,7 +29,7 @@ class PythonBuiltins(object):
         return repr(builtins)
 
 
-class Closure(object):
+class Environment(object):
 
     def __init__(self, initial=None, parent=None):
         self.values = initial or {}
@@ -53,5 +54,5 @@ class Closure(object):
         return name in self.values or self.parent and name in self.parent
 
     def __repr__(self):
-        return '<Closure {!r} at 0x{:x}, parent: {!r}>'.format(
+        return '<Environment {!r} at 0x{:x}, parent: {!r}>'.format(
             self.values, id(self), self.parent)
