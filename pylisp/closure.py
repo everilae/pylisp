@@ -46,6 +46,9 @@ class Closure(object):
     def __setitem__(self, name, value):
         self.values[name] = value
 
+    def update(self, *args, **kwgs):
+        self.values.update(*args, **kwgs)
+
     def __contains__(self, name):
         return name in self.values or self.parent and name in self.parent
 

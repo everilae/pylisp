@@ -9,9 +9,16 @@ from . import ir
 from .closure import Closure, PythonBuiltins
 from .utils import MethodDict
 
+_log = logging.getLogger(__name__)
+
 
 class ArityError(Exception):
     pass
+
+
+class Recur(object):
+    def __init__(self, args):
+        self.args = args
 
 
 class FunctionDef(object):
@@ -24,15 +31,69 @@ class FunctionDef(object):
         self.evaluator = evaluator
         self.closure = closure
 
+        self._tco = False
+
     def __call__(self, *args):
         if len(self.args) != len(args):
             raise ArityError('expected {} arguments, got {}'.format(
                 len(self.args), len(args)))
 
+        if not self._tco:
+            self.optimize_tail_calls()
+
         closure = Closure(dict(zip(self.args, args)), parent=self.closure)
 
         with self.evaluator.over(closure):
-            return self.evaluator.eval(self.body)
+            value = self.evaluator.eval(self.body)
+
+            while type(value) is Recur:
+                closure.update(zip(self.args, value.args))
+                value = self.evaluator.eval(self.body)
+
+            return value
+
+    def optimize_tail_calls(self):
+        pos = 0
+        calls = 0
+        cons = self.body
+        head = cons
+        prev = []
+        specials = {'if'}
+
+        while cons is not ir.Nil:
+            if type(cons.car) is ir.Symbol and pos == 0:
+                if cons.car.name not in specials:
+                    calls += 1
+
+                try:
+                    value = self.closure[cons.car.name]
+
+                except NameError:
+                    # Free variables
+                    pass
+
+                else:
+                    if value is self and calls == 1:
+                        cons.car = ir.Symbol(
+                            'recur',
+                            lineno=cons.car.lineno,
+                            col_offset=cons.car.col_offset
+                        )
+
+            elif type(cons.car) is ir.Cons:
+                prev.append((head, cons, pos, calls))
+                head = cons = cons.car
+                pos = 0
+                continue
+
+            if cons.cdr is ir.Nil and prev:
+                head, cons, pos, calls = prev.pop()
+
+            pos += 1
+            cons = cons.cdr
+
+        self._tco = True
+        _log.debug('tail call optimized: %s', self.body)
 
 
 def special(fun):
@@ -50,6 +111,7 @@ class Evaluator(object):
             '+': lambda *args: sum(args),
             '-': lambda left, *right: reduce(lambda l, r: l - r, right, left),
             '*': lambda *args: reduce(operator.mul, args),
+            '%': operator.mod,
             '=': operator.eq,
             '!=': operator.ne,
             '<': operator.lt,
@@ -65,6 +127,8 @@ class Evaluator(object):
             'list': self.list,
             'car': self.car,
             'cdr': self.cdr,
+            'recur': self.recur,
+            'let': self.let,
         }, parent=PythonBuiltins())]
 
     def eval(self, code, *, closure=None):
@@ -139,7 +203,8 @@ class Evaluator(object):
         if not isinstance(symbol, ir.Symbol):
             raise TypeError("'{}' is not a symbol".format(symbol))
 
-        self._closures[-1][symbol.name] = self._eval(value)
+        value = self._eval(value)
+        self._closures[-1][symbol.name] = value
 
     @special
     def quote(self, value):
@@ -152,6 +217,10 @@ class Evaluator(object):
             body=body, evaluator=self,
             closure=self._closures[-1]
         )
+
+    @special
+    def recur(self, *args):
+        return Recur(tuple(map(self._eval, args)))
 
     @contextmanager
     def over(self, closure):
@@ -174,3 +243,17 @@ class Evaluator(object):
 
     def cdr(self, cons):
         return cons.cdr
+
+    @special
+    def let(self, vars, body):
+        def ivar(cons):
+            while cons is not ir.Nil:
+                name = cons.car.name
+                value = self._eval(cons.cdr.car)
+                yield (name, value)
+                cons = cons.cdr.cdr
+
+        closure = Closure(parent=self._closures[-1])
+        with self.over(closure):
+            closure.update(dict((k, v) for k, v in ivar(vars)))
+            return self._eval(body)
