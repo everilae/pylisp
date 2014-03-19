@@ -53,6 +53,9 @@ class FunctionDef(object):
             return value
 
     def optimize_tail_calls(self):
+        if type(self.body) is not ir.Cons:
+            return
+
         pos = 0
         calls = 0
         cons = self.body
@@ -232,7 +235,7 @@ class Evaluator(object):
     @special
     def lambda_(self, args, body):
         return FunctionDef(
-            args=list(map(lambda cons: cons.car.name, args)),
+            args=tuple(map(lambda cons: cons.car.name, args)) if args is not ir.Nil else (),
             body=body, evaluator=self,
             closure=self._closures[-1]
         )

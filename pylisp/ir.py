@@ -38,12 +38,12 @@ class SExpr(Node):
     """
 
     def __init__(self, cons=None, lineno=None, col_offset=None):
-        self.head = cons
-        self.tail = cons
+        self.head = Nil
+        self.tail = Nil
         super().__init__(lineno=lineno, col_offset=col_offset)
 
     def __repr__(self):
-        if self.head:
+        if self.head is not Nil:
             return repr(self.head)
 
         return '()'
@@ -57,7 +57,7 @@ class SExpr(Node):
 
         node = Cons(node, lineno=lineno, col_offset=lineno)
 
-        if not self.head:
+        if self.head is Nil:
             self.head = node
             self.tail = node
 
