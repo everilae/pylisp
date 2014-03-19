@@ -58,7 +58,10 @@ class FunctionDef(object):
         cons = self.body
         head = cons
         prev = []
-        specials = {self.evaluator.if_, self.evaluator.let}
+        specials = {
+            self.evaluator.if_: {2, 3},
+            self.evaluator.let: {2},
+        }
 
         while cons is not ir.Nil:
             if type(cons.car) is ir.Symbol and pos == 0:
@@ -70,7 +73,19 @@ class FunctionDef(object):
                     calls += 1
 
                 else:
-                    if value is self and calls == 0:
+                    if (
+                        # Obvious
+                        value is self and
+                        # All previous calls, if any, have been special
+                        calls == 0 and
+                        (
+                            # Self is body
+                            not prev or
+                            # Previous call was special and Self is in correct
+                            # position
+                            prev[-1][2] in specials[self.closure[prev[-1][0].car.name]]
+                        )
+                    ):
                         # Tail position!
                         cons.car = ir.Symbol(
                             'recur',
@@ -79,9 +94,6 @@ class FunctionDef(object):
                         )
 
                     if value in specials:
-                        # FIXME: closer inspection is required, since first
-                        # argument to 'if' is not tail position, variable
-                        # binding in 'let' is not tail position etc...
                         pass
 
                     else:
