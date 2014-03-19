@@ -3,9 +3,8 @@ from __future__ import absolute_import, division, print_function
 
 import logging
 from .utils import MethodDict
+from .tokenizer import Tokenizer, LPAR, RPAR, STRING, SYMBOL, QUOTE, COMMENT
 from . import ir
-from io import StringIO
-import string
 
 
 class Parser(object):
@@ -17,115 +16,62 @@ class Parser(object):
     def __init__(self, source):
         self.source = source
         self.ir = [ir.Package()]
-
-        self._line = None
-        self._lineno = None
-        self._linepos = None
-
-        if isinstance(self.source, str):
-            self.source = StringIO(self.source)
+        self.tokenizer = Tokenizer(self.source)
 
     def parse(self):
         self._log.debug('parsing %r', self.source)
 
-        for lineno, line in enumerate(self.source, 1):
-            self._line = line
-            self._lineno = lineno
-            self._linepos = 0
-            self._linelen = len(line)
-            # Start parsing for this line
-            while self._linepos < self._linelen:
-                self._parse()
+        for token in self.tokenizer.tokenize():
+            parser = self.parsers.get(type(token))
+
+            if parser is None:
+                raise ValueError('unexpected token {!r}'.format(token))
+
+            parser(self, token)
 
         if not isinstance(self.ir[-1], ir.Package):
             raise self._syntax_error("unexpected EOF")
 
         return self.ir[-1]
 
-    def _parse(self):
-        chr_ = self._line[self._linepos]
-
-        while  chr_ in string.whitespace:
-            self._linepos += 1
-
-            if self._linepos >= self._linelen:
-                # Line ended with whitespace
-                return
-
-            chr_ = self._line[self._linepos]
-            continue
-
-        self.parsers.get(chr_, Parser.create_symbol)(self)
-
-    def _syntax_error(self, msg):
-        return SyntaxError('{}, line {} col {}'.format(
-            msg, self._lineno, self._linepos))
-
     def _pop_quote(self):
         if getattr(self.ir[-1], 'is_quote', False):
             sexpr = self.ir.pop()
             self.ir[-1].append(sexpr.head)
 
-    @parsers.annotate(';')
-    def comment(self):
-        self._linepos = self._linelen
-
-    @parsers.annotate("'")
-    def quote(self):
-        quote = ir.Symbol('quote', lineno=self._lineno,
-                          col_offset=self._linepos)
+    @parsers.annotate(QUOTE)
+    def quote(self, token):
+        quote = ir.Symbol('quote', lineno=token.lineno,
+                          col_offset=token.linepos)
         self.begin_list(quote=True)
         self.ir[-1].append(quote)
 
-    @parsers.annotate('(')
-    def begin_list(self, quote=False):
-        list_ = ir.SExpr(lineno=self._lineno, col_offset=self._linepos)
+    @parsers.annotate(LPAR)
+    def begin_list(self, token, quote=False):
+        list_ = ir.SExpr(lineno=token.lineno, col_offset=token.linepos)
         setattr(list_, 'is_quote', quote)
         self.ir.append(list_)
-        self._linepos += 1
 
-    @parsers.annotate(')')
-    def end_list(self):
+    @parsers.annotate(RPAR)
+    def end_list(self, token):
         if not isinstance(self.ir[-1], ir.SExpr):
-            raise self._syntax_error('unexpected end of list')
+            raise SyntaxError('unexpected end of list')
 
         sexpr = self.ir.pop()
         # Push cons to intermediate results
         self.ir[-1].append(sexpr.head)
         self._pop_quote()
-        self._linepos += 1
 
-    @parsers.annotate('"')
-    def create_str(self):
-        done = False
-        start = self._linepos + 1
-        end = self._line.find('"', start)
-
-        while not done and end < self._linelen:
-            if end == -1:
-                raise self._syntax_error('unterminated string')
-
-            if self._line[end - 1] != '\\':
-                done = True
-
-            else:
-                end = self._line.find('"', end + 1)
-
-        s = ir.Str(self._line[start:end], lineno=self._lineno,
-                   col_offset=self._linepos)
+    @parsers.annotate(STRING)
+    def create_str(self, token):
+        s = ir.Str(token.value, lineno=token.lineno,
+                   col_offset=token.linepos)
         self.ir[-1].append(s)
         self._pop_quote()
-        self._linepos = end + 1
 
-    def create_symbol(self):
-        start = self._linepos
-        end = start
-        non_symbol_chrs = frozenset(string.whitespace + ')')
-
-        while end < self._linelen and self._line[end] not in non_symbol_chrs:
-            end += 1
-
-        value = self._line[start:end]
+    @parsers.annotate(SYMBOL)
+    def create_symbol(self, token):
+        value = token.value
 
         try:
             try:
@@ -139,7 +85,13 @@ class Parser(object):
         except ValueError:
             symbol = ir.Symbol
 
-        self.ir[-1].append(symbol(value, lineno=self._lineno,
-                                  col_offset=self._linepos))
+        self.ir[-1].append(symbol(value, lineno=token.lineno,
+                                  col_offset=token.linepos))
         self._pop_quote()
-        self._linepos = end
+
+    @parsers.annotate(COMMENT)
+    def create_comment(self, token):
+        """
+        Ignore comments
+        """
+        pass
