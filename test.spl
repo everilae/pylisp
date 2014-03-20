@@ -1,10 +1,12 @@
 (define factorial
   (lambda (x)
-    (let (fact (lambda (x result)
-		 (if
-		   (= x 0)
-		   result
-		   (fact (- x 1) (* x result))))) (fact x 1))))
+    (let
+      (fact (lambda (x result)
+	      (if
+		(= x 0)
+		result
+		(fact (- x 1) (* x result)))))
+      (fact x 1))))
 
 (print (factorial 1))
 (print (factorial 10))
@@ -13,3 +15,5 @@
 (define apply
   (lambda (fun args)
     (eval (cons fun args))))
+
+(print (apply + '(1 2 3 4 5)))

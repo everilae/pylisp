@@ -73,15 +73,22 @@ class Cons(Node):
         super().__init__(lineno=lineno, col_offset=col_offset)
 
     def __repr__(self):
-        return '({})'.format(
-            ' '.join(map(lambda cons: repr(cons.car), iter(self))))
+        values = []
+
+        for value in iter(self):
+            values.append(repr(value.car))
+
+        if value.cdr is not Nil:
+            values.extend(['.', repr(value.cdr)])
+
+        return '({})'.format(' '.join(values))
 
     def __iter__(self):
-        cons = self
+        value = self
 
-        while cons is not Nil:
-            yield cons
-            cons = cons.cdr
+        while isinstance(value, Cons):
+            yield value
+            value = value.cdr
 
 
 class Str(Node):
