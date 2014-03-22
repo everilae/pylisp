@@ -55,7 +55,7 @@ class SExpr(Node):
         if isinstance(node, SExpr):
             node = node.head
 
-        node = Cons(node, lineno=lineno, col_offset=lineno)
+        node = Cons(node, lineno=lineno, col_offset=col_offset)
 
         if self.head is Nil:
             self.head = node
