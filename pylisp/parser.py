@@ -21,7 +21,7 @@ class Parser(object):
     def parse(self):
         self._log.debug('parsing: %r', self.source)
 
-        for token in self.tokenizer.tokenize():
+        for token in self.tokenizer:
             parser = self.parsers.get(type(token))
 
             if parser is None:

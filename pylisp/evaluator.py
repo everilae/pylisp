@@ -8,114 +8,9 @@ import operator
 from . import ir
 from .env import Environment, PythonBuiltins
 from .utils import MethodDict
+from .types import Recur, Closure
 
 _log = logging.getLogger(__name__)
-
-
-class ArityError(Exception):
-    pass
-
-
-class Recur(object):
-    def __init__(self, args):
-        self.args = args
-
-
-class Closure(object):
-
-    def __init__(self, name=None, args=None, body=None,
-                 evaluator=None, env=None):
-        self.name = name
-        self.args = args
-        self.body = body
-        self.evaluator = evaluator
-        self.env = env
-
-        self._tco = False
-
-    def __call__(self, *args):
-        if len(self.args) != len(args):
-            raise ArityError('expected {} arguments, got {}'.format(
-                len(self.args), len(args)))
-
-        if not self._tco:
-            self.optimize_tail_calls()
-
-        env = Environment(dict(zip(self.args, args)), parent=self.env)
-
-        with self.evaluator.over(env):
-            value = self.evaluator.eval(self.body)
-
-            while type(value) is Recur:
-                env.update(zip(self.args, value.args))
-                value = self.evaluator.eval(self.body)
-
-            return value
-
-    def optimize_tail_calls(self):
-        if type(self.body) is not ir.Cons:
-            return
-
-        pos = 0
-        calls = 0
-        cons = self.body
-        head = cons
-        prev = []
-        specials = {
-            self.evaluator.if_: {2, 3},
-            self.evaluator.let: {2},
-        }
-
-        while cons is not ir.Nil:
-            if type(cons.car) is ir.Symbol and pos == 0:
-                try:
-                    value = self.env[cons.car.name]
-
-                except NameError:
-                    # Free variables, no way to know what happens with these
-                    calls += 1
-
-                else:
-                    if (
-                        # Obvious
-                        value is self and
-                        # All previous calls, if any, have been special
-                        calls == 0 and
-                        (
-                            # Self is body
-                            not prev or
-                            # Previous call was special and Self is in correct
-                            # position
-                            prev[-1][2] in specials[self.env[prev[-1][0].car.name]]
-                        )
-                    ):
-                        # Tail position!
-                        cons.car = ir.Symbol(
-                            'recur',
-                            lineno=cons.car.lineno,
-                            col_offset=cons.car.col_offset
-                        )
-
-                    if value in specials:
-                        pass
-
-                    else:
-                        calls += 1
-
-            elif type(cons.car) is ir.Cons:
-                prev.append((head, cons, pos, calls))
-                head = cons = cons.car
-                pos = 0
-                continue
-
-            if cons.cdr is ir.Nil and prev:
-                head, cons, pos, calls = prev.pop()
-
-            pos += 1
-            cons = cons.cdr
-
-        self._tco = True
-        _log.debug('tail call optimized: %s', self.body)
 
 
 def special(fun):
@@ -228,6 +123,9 @@ class Evaluator(object):
         value = self.eval(value)
         self._envs[-1][symbol.name] = value
 
+        if isinstance(value, Closure):
+            self._optimize_tail_calls(value)
+
     @special
     def quote(self, value):
         return value
@@ -251,14 +149,13 @@ class Evaluator(object):
         self._envs.pop()
 
     def list(self, *args):
-        # Using SExpr node makes constructing a list easier;
-        # It handles conversions to cons etc
-        list_ = ir.SExpr()
+        cons = head = ir.Cons(args[0])
 
-        for arg in args:
-            list_.append(arg)
+        for arg in args[1:]:
+            cons.cdr = ir.Cons(arg)
+            cons = cons.cdr
 
-        return list_.head
+        return head
 
     def car(self, cons):
         return cons.car
@@ -268,17 +165,84 @@ class Evaluator(object):
 
     @special
     def let(self, vars, body):
-        def ivar(cons):
+        env = Environment(parent=self._envs[-1])
+        with self.over(env):
+            cons = vars
             while cons is not ir.Nil:
                 name = cons.car.name
                 value = self.eval(cons.cdr.car)
-                yield (name, value)
+                env[name] = value
+
+                if isinstance(value, Closure):
+                    self._optimize_tail_calls(value)
+
                 cons = cons.cdr.cdr
 
-        env = Environment(parent=self._envs[-1])
-        with self.over(env):
-            env.update(dict((k, v) for k, v in ivar(vars)))
             return self.eval(body)
 
     def cons(self, car, cdr):
         return ir.Cons(car, cdr)
+
+    def _optimize_tail_calls(self, closure):
+        if type(closure.body) is not ir.Cons:
+            return
+
+        pos = 0
+        calls = 0
+        cons = closure.body
+        head = cons
+        prev = []
+        specials = {
+            self.if_: {2, 3},
+            self.let: {2},
+        }
+
+        while cons is not ir.Nil:
+            if type(cons.car) is ir.Symbol and pos == 0:
+                try:
+                    value = closure.env[cons.car.name]
+
+                except NameError:
+                    # Free variables, no way to know what happens with these
+                    calls += 1
+
+                else:
+                    if (
+                        # Obvious
+                        value is closure and
+                        # All previous calls, if any, have been special
+                        calls == 0 and
+                        (
+                            # Self is body
+                            not prev or
+                            # Previous call was special and Self is in correct
+                            # position
+                            prev[-1][2] in specials[closure.env[prev[-1][0].car.name]]
+                        )
+                    ):
+                        # Tail position!
+                        cons.car = ir.Symbol(
+                            'recur',
+                            lineno=cons.car.lineno,
+                            col_offset=cons.car.col_offset
+                        )
+
+                    if value in specials:
+                        pass
+
+                    else:
+                        calls += 1
+
+            elif type(cons.car) is ir.Cons:
+                prev.append((head, cons, pos, calls))
+                head = cons = cons.car
+                pos = 0
+                continue
+
+            if cons.cdr is ir.Nil and prev:
+                head, cons, pos, calls = prev.pop()
+
+            pos += 1
+            cons = cons.cdr
+
+        _log.debug('tail call optimized: %s', closure.body)

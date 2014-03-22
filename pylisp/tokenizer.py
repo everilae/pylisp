@@ -107,7 +107,7 @@ class Tokenizer(object):
     def _flush_comment(self):
         return self._flush('_comment', COMMENT)
 
-    def tokenize(self):
+    def __iter__(self):
         for block in iter(partial(self.source.read, 512), ''):
             yield from self._next(block)
 

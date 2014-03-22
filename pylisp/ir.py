@@ -32,7 +32,7 @@ class Package(NodeCollection):
 
 class SExpr(Node):
     """
-    SExpr is a compile time helper type that makes handling conses easier.
+    SExpr is a parsing helper type that makes handling conses easier.
     It keeps track of current expressions head and tail in order to allow for
     easy appending.
     """
