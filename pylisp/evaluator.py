@@ -216,6 +216,12 @@ class Evaluator(object):
 
     @special
     def define(self, symbol, value):
+        if isinstance(symbol, ir.Cons):
+            args = symbol.cdr
+            symbol = symbol.car
+            value = self.lambda_(args, value)
+            value.name = symbol.name
+
         if not isinstance(symbol, ir.Symbol):
             raise TypeError("'{}' is not a symbol".format(symbol))
 
