@@ -26,7 +26,7 @@ class Procedure(object):
             raise ArityError('expected {} arguments, got {}'.format(
                 len(self.args), len(args)))
 
-        env = Environment(dict(zip(self.args, args)), parent=self.env)
+        env = Environment(dict(zip(self.args, args)), env=self.env)
 
         with self.evaluator.over(env):
             value = None

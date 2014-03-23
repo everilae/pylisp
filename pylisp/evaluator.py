@@ -51,7 +51,7 @@ class Evaluator(object):
             types.getsymbol('cons'): self.cons,
             types.getsymbol('begin'): self.begin,
             types.getsymbol('nil'): None,
-        }, parent=PythonBuiltins())]
+        }, env=PythonBuiltins())]
 
     def eval(self, obj):
         self._log.debug('eval: %s', obj)
@@ -96,7 +96,7 @@ class Evaluator(object):
                 env[symbol] = self.eval(value)
                 return
 
-            env = env.parent
+            env = env.env
 
         raise NameError("'{}' not defined".format(symbol))
 
@@ -163,7 +163,7 @@ class Evaluator(object):
 
     @special
     def let(self, vars, *body):
-        env = Environment(parent=self._envs[-1])
+        env = Environment(env=self._envs[-1])
         with self.over(env):
             cons = vars
             while cons is not types.Nil:

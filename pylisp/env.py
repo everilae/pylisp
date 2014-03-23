@@ -40,16 +40,16 @@ class PythonBuiltins(object):
 
 class Environment(object):
 
-    def __init__(self, initial=None, parent=None):
+    def __init__(self, initial=None, env=None):
         self.values = initial or {}
-        self.parent = parent
+        self.env = env
 
     def __getitem__(self, symbol):
         if symbol in self.values:
             return self.values[symbol]
 
-        elif self.parent:
-            return self.parent[symbol]
+        elif self.env:
+            return self.env[symbol]
 
         raise NameError(symbol)
 
@@ -64,4 +64,4 @@ class Environment(object):
 
     def __repr__(self):
         return '<Environment at 0x{:x}, keys: {}, parent: {!r}>'.format(
-            id(self), set(self.values.keys()), self.parent)
+            id(self), set(self.values.keys()), self.env)
