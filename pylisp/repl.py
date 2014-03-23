@@ -6,7 +6,7 @@ import sys
 import os
 import logging
 from .evaluator import Evaluator
-from .parser import Parser
+from .compiler import Compiler
 
 
 def repl():
@@ -62,10 +62,10 @@ def repl():
             continue
 
         try:
-            code = Parser(source).parse()
+            code = Compiler(source).compile()
 
         except Exception:
-            log.exception('Parser error')
+            log.exception('Compiler error')
             continue
 
         except KeyboardInterrupt as ki:

@@ -14,7 +14,7 @@ class NodeCollection(Node):
         super().__init__(lineno=lineno, col_offset=col_offset)
 
     def __repr__(self):
-        return ' '.join(map(repr, self))
+        return '\n'.join(map(repr, self))
 
     def append(self, node):
         self.body.append(node)
@@ -75,7 +75,7 @@ class Cons(Node):
     def __repr__(self):
         values = []
 
-        for value in iter(self):
+        for value in self:
             values.append(repr(value.car))
 
         if value.cdr is not Nil:
@@ -118,7 +118,7 @@ class Number(Node):
         super().__init__(lineno=lineno, col_offset=col_offset)
 
     def __repr__(self):
-        return '{}'.format(self.value)
+        return repr(self.value)
 
 
 Nil = Symbol('nil')
