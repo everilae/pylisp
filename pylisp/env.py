@@ -6,6 +6,13 @@ import builtins
 
 class PythonBuiltins(object):
 
+    @property
+    def parent(self):
+        """
+        It ends here
+        """
+        return None
+
     def __getitem__(self, name):
         attr = None
         if '.' in name:
