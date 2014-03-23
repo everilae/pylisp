@@ -20,7 +20,14 @@ class Compiler(object):
     
     @compilers.annotate(ir.Package)
     def package(self, node):
-        return types.Package(self._compile(n) for n in node)
+        begin = types.Cons(types.getsymbol('begin'))
+        tail = begin
+
+        for expr in node:
+            tail.cdr = types.Cons(self._compile(expr))
+            tail = tail.cdr
+
+        return begin
 
     @compilers.annotate(ir.Cons)
     def cons(self, node):

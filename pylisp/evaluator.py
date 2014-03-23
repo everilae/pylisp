@@ -21,7 +21,7 @@ def special(fun):
 
 class Evaluator(object):
 
-    _log = logging.getLogger('Evaluator')
+    _log = _log.getChild('Evaluator')
     lookup = MethodDict()
 
     def __init__(self, env=None):
@@ -49,40 +49,41 @@ class Evaluator(object):
             types.getsymbol('recur'): self.recur,
             types.getsymbol('let'): self.let,
             types.getsymbol('cons'): self.cons,
+            types.getsymbol('begin'): self.begin,
             types.getsymbol('nil'): None,
         }, parent=PythonBuiltins())]
 
-    def eval(self, obj, *, env=None):
+    def eval(self, obj):
         self._log.debug('eval: %s', obj)
         evaluator = self.lookup.get(type(obj))
 
         if evaluator:
-            return evaluator(self, obj, env or self._envs[-1])
+            return evaluator(self, obj)
 
         return obj
 
-    @lookup.annotate(types.Package)
-    def package(self, pkg, env):
-        value = None
-
-        for expr in pkg:
-            value = self.eval(expr)
-
-        return value
-
     @lookup.annotate(types.Cons)
-    def sexpr(self, cons, env):
+    def expr(self, cons):
         values = (c.car for c in cons)
         fun = self.eval(next(values))
 
         if getattr(fun, '_special', False):
-            return fun(*tuple(values))
+            return fun(*values)
 
-        return fun(*tuple(map(self.eval, values)))
+        return fun(*map(self.eval, values))
 
     @lookup.annotate(types.Symbol)
-    def symbol(self, symbol, env):
-        return env[symbol]
+    def symbol(self, symbol):
+        return self._envs[-1][symbol]
+
+    @special
+    def begin(self, *exprs):
+        value = None
+
+        for expr in exprs:
+            value = self.eval(expr)
+
+        return value
 
     @special
     def setbang(self, symbol, value):
@@ -115,17 +116,11 @@ class Evaluator(object):
             value = self.lambda_(args, *value)
             value.name = symbol
 
-        elif not isinstance(symbol, types.Symbol):
-            raise TypeError("{!r} is not a symbol".format(symbol))
-
-        elif len(value) > 1:
-            raise ArityError('expected 1 argument, got {}'.format(
-                len(value)))
-
         else:
             value = self.eval(value[0])
 
         self._envs[-1][symbol] = value
+        self._log.debug('define: %s', self._envs[-1])
 
         if isinstance(value, Procedure):
             self._optimize_tail_calls(value)
@@ -143,8 +138,8 @@ class Evaluator(object):
             args = tuple(map(lambda cons: cons.car, args))
 
         return Procedure(
-            args=args, body=types.Package(body), evaluator=self,
-            env=self._envs[-1]
+            None, args, body,
+            evaluator=self, env=self._envs[-1]
         )
 
     @special
@@ -196,20 +191,12 @@ class Evaluator(object):
             self._envs.pop()
 
     def _optimize_tail_calls(self, proc):
-        if isinstance(proc.body, types.Package):
-            body = proc.body[-1]
-
-        else:
-            body = proc.body
-
-        if isinstance(body, types.Cons):
-            cons = body
-
-        else:
+        if not isinstance(proc.body[-1], types.Cons):
             return
 
         pos = 0
         calls = 0
+        cons = proc.body[-1]
         head = cons
         prev = []
         specials = {

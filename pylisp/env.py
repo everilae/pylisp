@@ -63,5 +63,5 @@ class Environment(object):
         return symbol in self.values
 
     def __repr__(self):
-        return '<Environment {!r} at 0x{:x}, parent: {!r}>'.format(
-            self.values, id(self), self.parent)
+        return '<Environment at 0x{:x}, keys: {}, parent: {!r}>'.format(
+            id(self), set(self.values.keys()), self.parent)

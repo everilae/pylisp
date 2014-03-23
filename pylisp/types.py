@@ -3,10 +3,6 @@ from .exceptions import ArityError
 from threading import Lock
 
 
-class Package(tuple):
-    pass
-
-
 class Recur(object):
     def __init__(self, args):
         self.args = args
@@ -14,8 +10,11 @@ class Recur(object):
 
 class Procedure(object):
 
-    def __init__(self, name=None, args=None, body=None,
+    def __init__(self, name, args, body, *,
                  evaluator=None, env=None):
+        if not body:
+            raise ValueError('procedure without a body')
+
         self.name = name
         self.args = args
         self.body = body
@@ -30,13 +29,18 @@ class Procedure(object):
         env = Environment(dict(zip(self.args, args)), parent=self.env)
 
         with self.evaluator.over(env):
-            value = self.evaluator.eval(self.body)
+            value = None
 
-            while type(value) is Recur:
-                env.update(zip(self.args, value.args))
-                value = self.evaluator.eval(self.body)
+            while True:
+                for expr in self.body:
+                    value = self.evaluator.eval(expr)
 
-            return value
+                    if isinstance(value, Recur):
+                        env.update(zip(self.args, value.args))
+                        break
+
+                else:
+                    return value
 
 
 class Symbol(object):
