@@ -12,7 +12,7 @@ class Recur(object):
         self.args = args
 
 
-class Closure(object):
+class Procedure(object):
 
     def __init__(self, name=None, args=None, body=None,
                  evaluator=None, env=None):

@@ -9,7 +9,7 @@ from . import types
 from .env import Environment, PythonBuiltins
 from pylisp.exceptions import ArityError
 from .utils import MethodDict
-from .types import Recur, Closure
+from .types import Recur, Procedure
 
 _log = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ class Evaluator(object):
 
         self._envs[-1][symbol] = value
 
-        if isinstance(value, Closure):
+        if isinstance(value, Procedure):
             self._optimize_tail_calls(value)
 
     @special
@@ -142,7 +142,7 @@ class Evaluator(object):
         else:
             args = tuple(map(lambda cons: cons.car, args))
 
-        return Closure(
+        return Procedure(
             args=args, body=types.Package(body), evaluator=self,
             env=self._envs[-1]
         )
@@ -175,7 +175,7 @@ class Evaluator(object):
                 value = self.eval(cons.cdr.car)
                 env[cons.car] = value
 
-                if isinstance(value, Closure):
+                if isinstance(value, Procedure):
                     self._optimize_tail_calls(value)
 
                 cons = cons.cdr.cdr
@@ -195,12 +195,12 @@ class Evaluator(object):
         finally:
             self._envs.pop()
 
-    def _optimize_tail_calls(self, closure):
-        if isinstance(closure.body, types.Package):
-            body = closure.body[-1]
+    def _optimize_tail_calls(self, proc):
+        if isinstance(proc.body, types.Package):
+            body = proc.body[-1]
 
         else:
-            body = closure.body
+            body = proc.body
 
         if isinstance(body, types.Cons):
             cons = body
@@ -221,7 +221,7 @@ class Evaluator(object):
         while cons is not types.Nil:
             if type(cons.car) is types.Symbol and pos == 0:
                 try:
-                    value = closure.env[cons.car]
+                    value = proc.env[cons.car]
 
                 except NameError:
                     # Free variables, no way to know what happens with these
@@ -230,7 +230,7 @@ class Evaluator(object):
                 else:
                     if (
                         # Obvious
-                        value is closure and
+                        value is proc and
                         # All previous calls, if any, have been special
                         calls == 0 and
                         (
@@ -238,7 +238,7 @@ class Evaluator(object):
                             not prev or
                             # Previous call was special and Self is in correct
                             # position
-                            prev[-1][2] in specials[closure.env[prev[-1][0].car]]
+                            prev[-1][2] in specials[proc.env[prev[-1][0].car]]
                         )
                     ):
                         # Tail position!
@@ -262,4 +262,4 @@ class Evaluator(object):
             pos += 1
             cons = cons.cdr
 
-        _log.debug('tail call optimized: %s', closure.body)
+        _log.debug('tail call optimized: %s', proc.body)
