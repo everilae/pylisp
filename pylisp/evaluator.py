@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import operator
 from . import types 
 from .env import Environment, PythonBuiltins
+from pylisp.exceptions import ArityError
 from .utils import MethodDict
 from .types import Recur, Closure
 
@@ -88,8 +89,10 @@ class Evaluator(object):
         if not isinstance(symbol, types.Symbol):
             raise TypeError("'{}' is not a symbol".format(symbol))
 
-        if symbol.name in self._envs[-1]:
-            self._envs[-1][symbol.name] = self.eval(value)
+        for env in reversed(self._envs):
+            if symbol.name in env:
+                env[symbol.name] = self.eval(value)
+                break
 
         else:
             raise NameError("'{}' not defined".format(symbol.name))
@@ -110,10 +113,16 @@ class Evaluator(object):
             value = self.lambda_(args, *value)
             value.name = symbol.name
 
-        if not isinstance(symbol, types.Symbol):
-            raise TypeError("'{}' is not a symbol".format(symbol))
+        elif not isinstance(symbol, types.Symbol):
+            raise TypeError("{!r} is not a symbol".format(symbol))
 
-        value = self.eval(value)
+        elif len(value) > 1:
+            raise ArityError('expected 1 argument, got {}'.format(
+                len(value)))
+
+        else:
+            value = self.eval(value[0])
+
         self._envs[-1][symbol.name] = value
 
         if isinstance(value, Closure):
@@ -132,7 +141,8 @@ class Evaluator(object):
             args = tuple(map(lambda cons: cons.car.name, args))
 
         return Closure(
-            args=args, body=types.Package(body), evaluator=self, env=self._envs[-1]
+            args=args, body=types.Package(body), evaluator=self,
+            env=self._envs[-1]
         )
 
     @special
@@ -181,12 +191,17 @@ class Evaluator(object):
         self._envs.pop()
 
     def _optimize_tail_calls(self, closure):
-        if type(closure.body) is not types.Cons:
+        if isinstance(closure.body, types.Package):
+            cons = closure.body[-1]
+
+        elif isinstance(closure.body, types.Cons):
+            cons = closure.body
+
+        else:
             return
 
         pos = 0
         calls = 0
-        cons = closure.body
         head = cons
         prev = []
         specials = {
