@@ -39,6 +39,8 @@ class Parser(object):
         if getattr(self.ir[-1], 'is_quote', False):
             sexpr = self.ir.pop()
             self.ir[-1].append(sexpr.head)
+            # Multi level quoting
+            self._pop_quote()
 
     @parsers.annotate(QUOTE)
     def quote(self, token):
