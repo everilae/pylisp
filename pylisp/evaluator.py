@@ -26,30 +26,30 @@ class Evaluator(object):
 
     def __init__(self, env=None):
         self._envs = [env or Environment({
-            '+': lambda *args: sum(args),
-            '-': lambda left, *right: reduce(lambda l, r: l - r, right, left),
-            '*': lambda *args: reduce(operator.mul, args),
-            '%': operator.mod,
-            '=': operator.eq,
-            '!=': operator.ne,
-            '<': operator.lt,
-            '>': operator.gt,
-            '<=': operator.le,
-            '>=': operator.ge,
-            'eq?': operator.is_,
-            'set!': self.setbang,
-            'if': self.if_,
-            'define': self.define,
-            'eval': self.eval,
-            'quote': self.quote,
-            'lambda': self.lambda_,
-            'list': self.list,
-            'car': self.car,
-            'cdr': self.cdr,
-            'recur': self.recur,
-            'let': self.let,
-            'cons': self.cons,
-            'nil': None,
+            types.getsymbol('+'): lambda *args: sum(args),
+            types.getsymbol('-'): lambda left, *right: reduce(lambda l, r: l - r, right, left),
+            types.getsymbol('*'): lambda *args: reduce(operator.mul, args),
+            types.getsymbol('%'): operator.mod,
+            types.getsymbol('='): operator.eq,
+            types.getsymbol('!='): operator.ne,
+            types.getsymbol('<'): operator.lt,
+            types.getsymbol('>'): operator.gt,
+            types.getsymbol('<='): operator.le,
+            types.getsymbol('>='): operator.ge,
+            types.getsymbol('eq?'): operator.is_,
+            types.getsymbol('set!'): self.setbang,
+            types.getsymbol('if'): self.if_,
+            types.getsymbol('define'): self.define,
+            types.getsymbol('eval'): self.eval,
+            types.getsymbol('quote'): self.quote,
+            types.getsymbol('lambda'): self.lambda_,
+            types.getsymbol('list'): self.list,
+            types.getsymbol('car'): self.car,
+            types.getsymbol('cdr'): self.cdr,
+            types.getsymbol('recur'): self.recur,
+            types.getsymbol('let'): self.let,
+            types.getsymbol('cons'): self.cons,
+            types.getsymbol('nil'): None,
         }, parent=PythonBuiltins())]
 
     def eval(self, obj, *, env=None):
@@ -82,20 +82,22 @@ class Evaluator(object):
 
     @lookup.annotate(types.Symbol)
     def symbol(self, symbol, env):
-        return env[symbol.name]
+        return env[symbol]
 
     @special
     def setbang(self, symbol, value):
         if not isinstance(symbol, types.Symbol):
-            raise TypeError("'{}' is not a symbol".format(symbol))
+            raise TypeError("{!r} is not a symbol".format(symbol))
 
-        for env in reversed(self._envs):
-            if symbol.name in env:
-                env[symbol.name] = self.eval(value)
-                break
+        env = self._envs[-1]
+        while env:
+            if symbol in env:
+                env[symbol] = self.eval(value)
+                return
 
-        else:
-            raise NameError("'{}' not defined".format(symbol.name))
+            env = env.parent
+
+        raise NameError("'{}' not defined".format(symbol))
 
     @special
     def if_(self, pred, then, else_=types.Nil):
@@ -123,7 +125,7 @@ class Evaluator(object):
         else:
             value = self.eval(value[0])
 
-        self._envs[-1][symbol.name] = value
+        self._envs[-1][symbol] = value
 
         if isinstance(value, Closure):
             self._optimize_tail_calls(value)
@@ -187,15 +189,22 @@ class Evaluator(object):
     @contextmanager
     def over(self, env):
         self._envs.append(env)
-        yield
-        self._envs.pop()
+
+        try:
+            yield
+
+        finally:
+            self._envs.pop()
 
     def _optimize_tail_calls(self, closure):
         if isinstance(closure.body, types.Package):
-            cons = closure.body[-1]
+            body = closure.body[-1]
 
-        elif isinstance(closure.body, types.Cons):
-            cons = closure.body
+        else:
+            body = closure.body
+
+        if isinstance(body, types.Cons):
+            cons = body
 
         else:
             return

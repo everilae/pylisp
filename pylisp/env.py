@@ -13,7 +13,8 @@ class PythonBuiltins(object):
         """
         return None
 
-    def __getitem__(self, name):
+    def __getitem__(self, symbol):
+        name = symbol.name
         attr = None
         if '.' in name:
             name, attr = name.split('.', 1)
@@ -29,7 +30,8 @@ class PythonBuiltins(object):
 
         return value
 
-    def __contains__(self, name):
+    def __contains__(self, symbol):
+        name = symbol.name
         return hasattr(builtins, name)
 
     def __repr__(self):
@@ -42,23 +44,23 @@ class Environment(object):
         self.values = initial or {}
         self.parent = parent
 
-    def __getitem__(self, name):
-        if name in self.values:
-            return self.values[name]
+    def __getitem__(self, symbol):
+        if symbol in self.values:
+            return self.values[symbol]
 
         elif self.parent:
-            return self.parent[name]
+            return self.parent[symbol]
 
-        raise NameError(name)
+        raise NameError(symbol)
 
-    def __setitem__(self, name, value):
-        self.values[name] = value
+    def __setitem__(self, symbol, value):
+        self.values[symbol] = value
 
     def update(self, *args, **kwgs):
         self.values.update(*args, **kwgs)
 
-    def __contains__(self, name):
-        return name in self.values or self.parent and name in self.parent
+    def __contains__(self, symbol):
+        return symbol in self.values
 
     def __repr__(self):
         return '<Environment {!r} at 0x{:x}, parent: {!r}>'.format(
