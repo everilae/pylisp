@@ -175,7 +175,12 @@ class Evaluator(object):
 
                 cons = cons.cdr.cdr
 
-            return self.eval(types.Package(body))
+            value = None
+
+            for expr in body:
+                value = self.eval(expr)
+
+            return value
 
     def cons(self, car, cdr):
         return types.Cons(car, cdr)
