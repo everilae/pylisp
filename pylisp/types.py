@@ -1,5 +1,3 @@
-from .env import Environment
-from .exceptions import ArityError
 from threading import Lock
 
 
@@ -11,36 +9,14 @@ class Recur(object):
 class Procedure(object):
 
     def __init__(self, name, args, body, *,
-                 evaluator=None, env=None):
+                 env=None):
         if not body:
             raise ValueError('procedure without a body')
 
         self.name = name
         self.args = args
         self.body = body
-        self.evaluator = evaluator
         self.env = env
-
-    def __call__(self, *args):
-        if len(self.args) != len(args):
-            raise ArityError('expected {} arguments, got {}'.format(
-                len(self.args), len(args)))
-
-        env = Environment(dict(zip(self.args, args)), env=self.env)
-
-        with self.evaluator.over(env):
-            value = None
-
-            while True:
-                for expr in self.body:
-                    value = self.evaluator.eval(expr)
-
-                    if isinstance(value, Recur):
-                        env.update(zip(self.args, value.args))
-                        break
-
-                else:
-                    return value
 
 
 class Symbol(object):

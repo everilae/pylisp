@@ -56,6 +56,7 @@ def repl():
             break
 
         except KeyboardInterrupt as ki:
+            print(ki)
             continue
 
         if not source:

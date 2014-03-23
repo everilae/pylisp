@@ -2,12 +2,11 @@
 from __future__ import absolute_import, division, print_function
 
 import logging
-from functools import reduce
+from functools import reduce, partial
 from contextlib import contextmanager
 import operator
 from . import types 
 from .env import Environment, PythonBuiltins
-from pylisp.exceptions import ArityError
 from .utils import MethodDict
 from .types import Recur, Procedure
 
@@ -67,7 +66,10 @@ class Evaluator(object):
         values = (c.car for c in cons)
         fun = self.eval(next(values))
 
-        if getattr(fun, '_special', False):
+        if isinstance(fun, Procedure):
+            fun = partial(self._call_procedure, fun)
+
+        elif getattr(fun, '_special', False):
             return fun(*values)
 
         return fun(*map(self.eval, values))
@@ -137,10 +139,7 @@ class Evaluator(object):
         else:
             args = tuple(map(lambda cons: cons.car, args))
 
-        return Procedure(
-            None, args, body,
-            evaluator=self, env=self._envs[-1]
-        )
+        return Procedure(None, args, body, env=self._envs[-1])
 
     @special
     def recur(self, *args):
@@ -194,6 +193,27 @@ class Evaluator(object):
 
         finally:
             self._envs.pop()
+
+    def _call_procedure(self, proc, *args):
+        if len(proc.args) != len(args):
+            raise TypeError('expected {} arguments, got {}'.format(
+                len(proc.args), len(args)))
+
+        env = Environment(dict(zip(proc.args, args)), env=proc.env)
+
+        with self.over(env):
+            value = None
+
+            while True:
+                for expr in proc.body:
+                    value = self.eval(expr)
+
+                    if isinstance(value, Recur):
+                        env.update(zip(proc.args, value.args))
+                        break
+
+                else:
+                    return value
 
     def _optimize_tail_calls(self, proc):
         if not isinstance(proc.body[-1], types.Cons):

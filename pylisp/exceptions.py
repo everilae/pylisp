@@ -1,2 +1,0 @@
-class ArityError(Exception):
-    pass
