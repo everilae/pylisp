@@ -113,7 +113,7 @@ class Evaluator(object):
             args = symbol.cdr
             symbol = symbol.car
             value = self.lambda_(args, *value)
-            value.name = symbol.name
+            value.name = symbol
 
         elif not isinstance(symbol, types.Symbol):
             raise TypeError("{!r} is not a symbol".format(symbol))
@@ -140,7 +140,7 @@ class Evaluator(object):
             args = ()
 
         else:
-            args = tuple(map(lambda cons: cons.car.name, args))
+            args = tuple(map(lambda cons: cons.car, args))
 
         return Closure(
             args=args, body=types.Package(body), evaluator=self,
@@ -172,9 +172,8 @@ class Evaluator(object):
         with self.over(env):
             cons = vars
             while cons is not types.Nil:
-                name = cons.car.name
                 value = self.eval(cons.cdr.car)
-                env[name] = value
+                env[cons.car] = value
 
                 if isinstance(value, Closure):
                     self._optimize_tail_calls(value)
@@ -215,13 +214,14 @@ class Evaluator(object):
         prev = []
         specials = {
             self.if_: {2, 3},
-            self.let: {2},
+            self.let: {-1},
+            self.lambda_: {-1},
         }
 
         while cons is not types.Nil:
             if type(cons.car) is types.Symbol and pos == 0:
                 try:
-                    value = closure.env[cons.car.name]
+                    value = closure.env[cons.car]
 
                 except NameError:
                     # Free variables, no way to know what happens with these
@@ -238,11 +238,11 @@ class Evaluator(object):
                             not prev or
                             # Previous call was special and Self is in correct
                             # position
-                            prev[-1][2] in specials[closure.env[prev[-1][0].car.name]]
+                            prev[-1][2] in specials[closure.env[prev[-1][0].car]]
                         )
                     ):
                         # Tail position!
-                        cons.car = types.Symbol('recur')
+                        cons.car = types.getsymbol('recur')
 
                     if value in specials:
                         pass
