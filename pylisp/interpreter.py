@@ -163,8 +163,8 @@ class Interpreter(object):
         return Procedure(None, args, body, self._envs[-1])
 
     @special
-    def call_cc(self, cons):
-        self.expr(types.Cons(cons, types.Cons(self.currentcontinuation)))
+    def call_cc(self, fun):
+        self.expr(types.Cons(fun, types.Cons(self.currentcontinuation)))
 
     @special
     def recur(self, proc, *args):
@@ -202,7 +202,7 @@ class Interpreter(object):
                 if isinstance(value, Procedure):
                     self._optimize_tail_calls(value)
 
-        return self._run_continuation(Continuation(env, body))
+            return self._run_continuation(Continuation(env, body))
 
     def cons(self, car, cdr):
         return types.Cons(car, cdr)
