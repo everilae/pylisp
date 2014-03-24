@@ -60,15 +60,7 @@ class Interpreter(object):
             )
         ]
 
-        self._continuation = None
-
-    @property
-    def currentcontinuation(self):
-        return self._continuation
-
-    @currentcontinuation.setter
-    def currentcontinuation(self, continuation):
-        self._continuation = continuation
+        self._currcontinuation = None
 
     def eval(self, obj):
         self._log.debug('eval: %s', obj)
@@ -164,7 +156,7 @@ class Interpreter(object):
 
     @special
     def call_cc(self, fun):
-        self.expr(types.Cons(fun, types.Cons(self.currentcontinuation)))
+        self.expr(types.Cons(fun, types.Cons(self._currcontinuation)))
 
     @special
     def recur(self, proc, *args):
@@ -230,13 +222,13 @@ class Interpreter(object):
         value = continuation
 
         while isinstance(value, Continuation):
-            self.currentcontinuation = value
+            self._currcontinuation = cc = value
 
-            with self.over(self.currentcontinuation.env):
-                pc = self.currentcontinuation.next
-                exprs = self.currentcontinuation.exprs[pc:]
+            with self.over(cc.env):
+                pc = cc.next
+                exprs = cc.exprs[pc:]
 
-                for self.currentcontinuation.next, expr in enumerate(exprs, pc + 1):
+                for self._currcontinuation.next, expr in enumerate(exprs, pc + 1):
                     value = self.eval(expr)
 
         return value
