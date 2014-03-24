@@ -43,6 +43,8 @@ class Interpreter(object):
                     types.getsymbol('>='): operator.ge,
                     types.getsymbol('eq?'): operator.is_,
                     types.getsymbol('set!'): self.setbang,
+                    types.getsymbol('set-car!'): self.setcarbang,
+                    types.getsymbol('set-cdr!'): self.setcdrbang,
                     types.getsymbol('if'): self.if_,
                     types.getsymbol('define'): self.define,
                     types.getsymbol('eval'): self.eval,
@@ -178,8 +180,16 @@ class Interpreter(object):
     def car(self, cons):
         return cons.car
 
+    @special
+    def setcarbang(self, symbol, value):
+        self._envs[-1][symbol].car = self.eval(value)
+
     def cdr(self, cons):
         return cons.cdr
+
+    @special
+    def setcdrbang(self, symbol, value):
+        self._envs[-1][symbol].cdr = self.eval(value)
 
     @special
     def let(self, defs, *body):
