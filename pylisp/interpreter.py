@@ -32,7 +32,7 @@ class Interpreter(object):
                 {
                     types.getsymbol('nil'): None,
                     types.getsymbol('+'): lambda *args: sum(args),
-                    types.getsymbol('-'): lambda left, *right: reduce(lambda l, r: l - r, right, left),
+                    types.getsymbol('-'): lambda *args: reduce(operator.sub, args),
                     types.getsymbol('*'): lambda *args: reduce(operator.mul, args),
                     types.getsymbol('%'): operator.mod,
                     types.getsymbol('='): operator.eq,
