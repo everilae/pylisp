@@ -156,7 +156,7 @@ class Interpreter(object):
 
     @special
     def call_cc(self, fun):
-        self.expr(types.Cons(fun, types.Cons(self._currcontinuation)))
+        self.expr(self.cons(fun, self.cons(self._currcontinuation)))
 
     @special
     def recur(self, proc, *args):
@@ -274,7 +274,7 @@ class Interpreter(object):
                         # Tail position! Do some rewriting
                         cons.car = self.recur
                         # Insert a reference to procedure as 1. arg
-                        cons.cdr = types.Cons(proc, cons.cdr)
+                        cons.cdr = self.cons(proc, cons.cdr)
 
                     if value in specials:
                         pass
