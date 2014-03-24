@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function
+import copy
 
 import logging
 from functools import reduce, partial
@@ -8,7 +9,7 @@ import operator
 from . import types 
 from .env import Environment, PythonBuiltins
 from .utils import MethodDict
-from .types import Recur, Procedure
+from .types import Recur, Procedure, Continuation
 
 _log = logging.getLogger(__name__)
 
@@ -18,39 +19,56 @@ def special(fun):
     return fun
 
 
-class Evaluator(object):
+class Interpreter(object):
 
     _log = _log.getChild('Evaluator')
     lookup = MethodDict()
 
     def __init__(self, env=None):
-        self._envs = [env or Environment({
-            types.getsymbol('+'): lambda *args: sum(args),
-            types.getsymbol('-'): lambda left, *right: reduce(lambda l, r: l - r, right, left),
-            types.getsymbol('*'): lambda *args: reduce(operator.mul, args),
-            types.getsymbol('%'): operator.mod,
-            types.getsymbol('='): operator.eq,
-            types.getsymbol('!='): operator.ne,
-            types.getsymbol('<'): operator.lt,
-            types.getsymbol('>'): operator.gt,
-            types.getsymbol('<='): operator.le,
-            types.getsymbol('>='): operator.ge,
-            types.getsymbol('eq?'): operator.is_,
-            types.getsymbol('set!'): self.setbang,
-            types.getsymbol('if'): self.if_,
-            types.getsymbol('define'): self.define,
-            types.getsymbol('eval'): self.eval,
-            types.getsymbol('quote'): self.quote,
-            types.getsymbol('lambda'): self.lambda_,
-            types.getsymbol('list'): self.list,
-            types.getsymbol('car'): self.car,
-            types.getsymbol('cdr'): self.cdr,
-            types.getsymbol('recur'): self.recur,
-            types.getsymbol('let'): self.let,
-            types.getsymbol('cons'): self.cons,
-            types.getsymbol('begin'): self.begin,
-            types.getsymbol('nil'): None,
-        }, env=PythonBuiltins())]
+        # Separate env stack is required, since special methods have
+        # no continuation
+        self._envs = [
+            env or Environment(
+                {
+                    types.getsymbol('nil'): None,
+                    types.getsymbol('+'): lambda *args: sum(args),
+                    types.getsymbol('-'): lambda left, *right: reduce(lambda l, r: l - r, right, left),
+                    types.getsymbol('*'): lambda *args: reduce(operator.mul, args),
+                    types.getsymbol('%'): operator.mod,
+                    types.getsymbol('='): operator.eq,
+                    types.getsymbol('!='): operator.ne,
+                    types.getsymbol('<'): operator.lt,
+                    types.getsymbol('>'): operator.gt,
+                    types.getsymbol('<='): operator.le,
+                    types.getsymbol('>='): operator.ge,
+                    types.getsymbol('eq?'): operator.is_,
+                    types.getsymbol('set!'): self.setbang,
+                    types.getsymbol('if'): self.if_,
+                    types.getsymbol('define'): self.define,
+                    types.getsymbol('eval'): self.eval,
+                    types.getsymbol('quote'): self.quote,
+                    types.getsymbol('lambda'): self.lambda_,
+                    types.getsymbol('list'): self.list,
+                    types.getsymbol('car'): self.car,
+                    types.getsymbol('cdr'): self.cdr,
+                    types.getsymbol('let'): self.let,
+                    types.getsymbol('cons'): self.cons,
+                    types.getsymbol('begin'): self.begin,
+                    types.getsymbol('call/cc'): self.call_cc,
+                },
+                env=PythonBuiltins()
+            )
+        ]
+
+        self._continuation = None
+
+    @property
+    def currentcontinuation(self):
+        return self._continuation
+
+    @currentcontinuation.setter
+    def currentcontinuation(self, continuation):
+        self._continuation = continuation
 
     def eval(self, obj):
         self._log.debug('eval: %s', obj)
@@ -68,6 +86,9 @@ class Evaluator(object):
 
         if isinstance(fun, Procedure):
             fun = partial(self._call_procedure, fun)
+
+        elif isinstance(fun, Continuation):
+            return self._run_continuation(copy.copy(fun))
 
         elif getattr(fun, '_special', False):
             return fun(*values)
@@ -137,13 +158,21 @@ class Evaluator(object):
             args = ()
 
         else:
-            args = tuple(map(lambda cons: cons.car, args))
+            args = tuple(c.car for c in args)
 
-        return Procedure(None, args, body, env=self._envs[-1])
+        return Procedure(None, args, body, self._envs[-1])
 
     @special
-    def recur(self, *args):
-        return Recur(tuple(map(self.eval, args)))
+    def call_cc(self, cons):
+        self.expr(types.Cons(cons, types.Cons(self.currentcontinuation)))
+
+    @special
+    def recur(self, proc, *args):
+        # Build a new calling environment
+        env = Environment(dict(zip(proc.args, map(self.eval, args))),
+                          env=proc.env)
+        # Return a new continuation (reset to start of proc)
+        return Continuation(env, proc.body)
 
     def list(self, *args):
         cons = head = types.Cons(args[0])
@@ -161,25 +190,19 @@ class Evaluator(object):
         return cons.cdr
 
     @special
-    def let(self, vars, *body):
+    def let(self, defs, *body):
         env = Environment(env=self._envs[-1])
+
         with self.over(env):
-            cons = vars
-            while cons is not types.Nil:
-                value = self.eval(cons.cdr.car)
-                env[cons.car] = value
+            for d in defs:
+                symbol = d.car.car
+                value = d.car.cdr.car
+                env[symbol] = self.eval(value)
 
                 if isinstance(value, Procedure):
                     self._optimize_tail_calls(value)
 
-                cons = cons.cdr.cdr
-
-            value = None
-
-            for expr in body:
-                value = self.eval(expr)
-
-            return value
+        return self._run_continuation(Continuation(env, body))
 
     def cons(self, car, cdr):
         return types.Cons(car, cdr)
@@ -200,16 +223,23 @@ class Evaluator(object):
                 len(proc.args), len(args)))
 
         env = Environment(dict(zip(proc.args, args)), env=proc.env)
+        continuation = Continuation(env, proc.body)
+        return self._run_continuation(continuation)
 
-        with self.over(env):
-            value = None
+    def _run_continuation(self, continuation):
+        self.currentcontinuation = continuation
 
-            while True:
-                for expr in proc.body:
+        while True:
+            with self.over(self.currentcontinuation.env):
+                value = None
+                pc = self.currentcontinuation.next
+                exprs = self.currentcontinuation.exprs[pc:]
+
+                for self.currentcontinuation.next, expr in enumerate(exprs, pc + 1):
                     value = self.eval(expr)
 
-                    if isinstance(value, Recur):
-                        env.update(zip(proc.args, value.args))
+                    if isinstance(value, Continuation):
+                        self.currentcontinuation = value
                         break
 
                 else:
@@ -253,8 +283,10 @@ class Evaluator(object):
                             prev[-1][2] in specials[proc.env[prev[-1][0].car]]
                         )
                     ):
-                        # Tail position!
-                        cons.car = types.getsymbol('recur')
+                        # Tail position! Do some rewriting
+                        cons.car = self.recur
+                        # Insert a reference to procedure as 1. arg
+                        cons.cdr = types.Cons(proc, cons.cdr)
 
                     if value in specials:
                         pass

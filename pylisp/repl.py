@@ -5,7 +5,7 @@ from argparse import ArgumentParser, FileType
 import sys
 import os
 import logging
-from .evaluator import Evaluator
+from .interpreter import Interpreter
 from .compiler import Compiler
 
 
@@ -19,7 +19,7 @@ def repl():
         help="program read from file")
 
     args = argparser.parse_args()
-    e = Evaluator()
+    e = Interpreter()
 
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)

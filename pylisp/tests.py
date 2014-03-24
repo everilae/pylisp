@@ -4,7 +4,7 @@ from __future__ import absolute_import, division, print_function
 
 def tests():
     from .parser import Parser
-    from .evaluator import Evaluator
+    from .interpreter import Interpreter
     from .compiler import Compiler
 
     p = Parser("""
@@ -16,9 +16,9 @@ def tests():
     "asdf \\"hehheh\\" more"
     """).parse()
 
-    Evaluator().eval(Compiler("""(print (+ 1 2 3))""").compile())
+    Interpreter().eval(Compiler("""(print (+ 1 2 3))""").compile())
 
-    Evaluator().eval(Compiler("""
+    Interpreter().eval(Compiler("""
         (define a 1)
         (print a)
         (set! a 2)
@@ -26,7 +26,7 @@ def tests():
     """).compile())
 
     try:
-        Evaluator().eval(Compiler("""(set! a 1)""").compile())
+        Interpreter().eval(Compiler("""(set! a 1)""").compile())
 
     except NameError:
         pass

@@ -8,8 +8,9 @@ class Recur(object):
 
 class Procedure(object):
 
-    def __init__(self, name, args, body, *,
-                 env=None):
+    __slots__ = ['name', 'args', 'body', 'env']
+
+    def __init__(self, name, args, body, env):
         if not body:
             raise ValueError('procedure without a body')
 
@@ -17,6 +18,16 @@ class Procedure(object):
         self.args = args
         self.body = body
         self.env = env
+
+
+class Continuation(object):
+
+    __slots__ = ['env', 'exprs', 'next']
+
+    def __init__(self, env, exprs, next=0):
+        self.env = env
+        self.exprs = exprs
+        self.next = next
 
 
 class Symbol(object):
