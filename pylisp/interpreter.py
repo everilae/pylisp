@@ -227,23 +227,19 @@ class Interpreter(object):
         return self._run_continuation(continuation)
 
     def _run_continuation(self, continuation):
-        self.currentcontinuation = continuation
+        value = continuation
 
-        while True:
+        while isinstance(value, Continuation):
+            self.currentcontinuation = value
+
             with self.over(self.currentcontinuation.env):
-                value = None
                 pc = self.currentcontinuation.next
                 exprs = self.currentcontinuation.exprs[pc:]
 
                 for self.currentcontinuation.next, expr in enumerate(exprs, pc + 1):
                     value = self.eval(expr)
 
-                    if isinstance(value, Continuation):
-                        self.currentcontinuation = value
-                        break
-
-                else:
-                    return value
+        return value
 
     def _optimize_tail_calls(self, proc):
         if not isinstance(proc.body[-1], types.Cons):
