@@ -9,7 +9,7 @@ import operator
 from . import types 
 from .env import Environment, PythonBuiltins
 from .utils import MethodDict
-from .types import Recur, Procedure, Continuation
+from .types import Procedure, Continuation
 
 _log = logging.getLogger(__name__)
 
@@ -41,6 +41,8 @@ class Interpreter(object):
                     types.getsymbol('>'): operator.gt,
                     types.getsymbol('<='): operator.le,
                     types.getsymbol('>='): operator.ge,
+                    types.getsymbol('.'): self.getattr_,
+                    types.getsymbol('.='): self.setattr_,
                     types.getsymbol('eq?'): operator.is_,
                     types.getsymbol('set!'): self.setbang,
                     types.getsymbol('set-car!'): self.setcarbang,
@@ -158,7 +160,7 @@ class Interpreter(object):
 
     @special
     def call_cc(self, fun):
-        self.expr(self.cons(fun, self.cons(self._currcontinuation)))
+        self.expr(self.cons(fun, self.cons(self._currcontinuation, None)))
 
     @special
     def recur(self, proc, *args):
@@ -208,6 +210,14 @@ class Interpreter(object):
 
     def cons(self, car, cdr):
         return types.Cons(car, cdr)
+
+    @special
+    def getattr_(self, obj, attr, *default):
+        return getattr(self.symbol(obj), attr.name, *default)
+
+    @special
+    def setattr_(self, obj, attr, value):
+        setattr(self.symbol(obj), attr.name, self.eval(value))
 
     @contextmanager
     def over(self, env):
