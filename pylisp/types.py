@@ -8,7 +8,7 @@ class Recur(object):
 
 class Procedure(object):
 
-    __slots__ = ['name', 'args', 'body', 'env']
+    __slots__ = ('name', 'args', 'body', 'env')
 
     def __init__(self, name, args, body, env):
         if not body:
@@ -22,7 +22,7 @@ class Procedure(object):
 
 class Continuation(object):
 
-    __slots__ = ['env', 'exprs', 'next']
+    __slots__ = ('env', 'exprs', 'next')
 
     def __init__(self, env, exprs, next=0):
         self.env = env
@@ -46,7 +46,7 @@ class Symbol(object):
                 cls._table[name] = symbol
                 return symbol
 
-    __slots__ = ['name']
+    __slots__ = ('name',)
 
     def __init__(self, name):
         self.name = name
@@ -64,7 +64,7 @@ Nil = Symbol.get('nil')
 
 class Cons(object):
 
-    __slots__ = ['car', 'cdr']
+    __slots__ = ('car', 'cdr')
 
     def __init__(self, car, cdr=Nil):
         self.car = car
