@@ -30,40 +30,40 @@ class Interpreter(object):
         self._envs = [
             env or Environment(
                 {
-                    types.getsymbol('nil'): None,
-                    types.getsymbol('+'): lambda *args: sum(args),
-                    types.getsymbol('-'): lambda *args: reduce(operator.sub, args),
-                    types.getsymbol('*'): lambda *args: reduce(operator.mul, args),
-                    types.getsymbol('%'): operator.mod,
-                    types.getsymbol('='): operator.eq,
-                    types.getsymbol('!='): operator.ne,
-                    types.getsymbol('<'): operator.lt,
-                    types.getsymbol('>'): operator.gt,
-                    types.getsymbol('<='): operator.le,
-                    types.getsymbol('>='): operator.ge,
-                    types.getsymbol('.'): self.getattr_,
-                    types.getsymbol('.='): self.setattr_,
-                    types.getsymbol('eq?'): operator.is_,
-                    types.getsymbol('set!'): self.setbang,
-                    types.getsymbol('set-car!'): self.setcarbang,
-                    types.getsymbol('set-cdr!'): self.setcdrbang,
-                    types.getsymbol('if'): self.if_,
-                    types.getsymbol('define'): self.define,
-                    types.getsymbol('eval'): self.eval,
-                    types.getsymbol('quote'): self.quote,
-                    types.getsymbol('lambda'): self.lambda_,
-                    types.getsymbol('list'): self.list,
-                    types.getsymbol('car'): self.car,
-                    types.getsymbol('cdr'): self.cdr,
-                    types.getsymbol('let'): self.let,
-                    types.getsymbol('cons'): self.cons,
-                    types.getsymbol('begin'): self.begin,
-                    types.getsymbol('call/cc'): self.call_cc,
+                    'nil': None,
+                    '+': lambda *args: sum(args),
+                    '-': lambda *args: reduce(operator.sub, args),
+                    '*': lambda *args: reduce(operator.mul, args),
+                    '%': operator.mod,
+                    '=': operator.eq,
+                    '!=': operator.ne,
+                    '<': operator.lt,
+                    '>': operator.gt,
+                    '<=': operator.le,
+                    '>=': operator.ge,
+                    '.': self.getattr_,
+                    '.=': self.setattr_,
+                    'eq?': operator.is_,
+                    'set!': self.setbang,
+                    'set-car!': self.setcarbang,
+                    'set-cdr!': self.setcdrbang,
+                    'if': self.if_,
+                    'define': self.define,
+                    'eval': self.eval,
+                    'quote': self.quote,
+                    'lambda': self.lambda_,
+                    'list': self.list,
+                    'car': self.car,
+                    'cdr': self.cdr,
+                    'let': self.let,
+                    'cons': self.cons,
+                    'begin': self.begin,
+                    'call/cc': self.call_cc,
                 },
                 env=PythonBuiltins()
             )
         ]
-
+        self._nil = None
         self._currcontinuation = None
 
     def eval(self, obj):
@@ -93,7 +93,7 @@ class Interpreter(object):
 
     @lookup.annotate(types.Symbol)
     def symbol(self, symbol):
-        return self._envs[-1][symbol]
+        return self._envs[-1][symbol.name]
 
     @special
     def begin(self, *exprs):
@@ -111,8 +111,8 @@ class Interpreter(object):
 
         env = self._envs[-1]
         while env:
-            if symbol in env:
-                env[symbol] = self.eval(value)
+            if symbol.name in env:
+                env[symbol.name] = self.eval(value)
                 return
 
             env = env.env
@@ -120,7 +120,7 @@ class Interpreter(object):
         raise NameError("'{}' not defined".format(symbol))
 
     @special
-    def if_(self, pred, then, else_=types.Nil):
+    def if_(self, pred, then, else_=None):
         if self.eval(pred):
             return self.eval(then)
 
@@ -138,11 +138,8 @@ class Interpreter(object):
         else:
             value = self.eval(value[0])
 
-        self._envs[-1][symbol] = value
+        self._envs[-1][symbol.name] = value
         self._log.debug('define: %s', self._envs[-1])
-
-        if isinstance(value, Procedure):
-            self._optimize_tail_calls(value)
 
     @special
     def quote(self, value):
@@ -150,11 +147,11 @@ class Interpreter(object):
 
     @special
     def lambda_(self, args, *body):
-        if args is types.Nil:
+        if args is self._nil:
             args = ()
 
         else:
-            args = tuple(c.car for c in args)
+            args = tuple(c.car.name for c in args)
 
         return Procedure(None, args, body, self._envs[-1])
 
@@ -163,7 +160,7 @@ class Interpreter(object):
         self.expr(self.cons(fun, self.cons(self._currcontinuation, None)))
 
     @special
-    def recur(self, proc, *args):
+    def jump(self, proc, *args):
         # Build a new calling environment
         env = Environment(dict(zip(proc.args, map(self.eval, args))),
                           env=proc.env)
@@ -184,14 +181,14 @@ class Interpreter(object):
 
     @special
     def setcarbang(self, symbol, value):
-        self._envs[-1][symbol].car = self.eval(value)
+        self._envs[-1][symbol.name].car = self.eval(value)
 
     def cdr(self, cons):
         return cons.cdr
 
     @special
     def setcdrbang(self, symbol, value):
-        self._envs[-1][symbol].cdr = self.eval(value)
+        self._envs[-1][symbol.name].cdr = self.eval(value)
 
     @special
     def let(self, defs, *body):
@@ -201,10 +198,7 @@ class Interpreter(object):
             for d in defs:
                 symbol = d.car.car
                 value = d.car.cdr.car
-                env[symbol] = self.eval(value)
-
-                if isinstance(value, Procedure):
-                    self._optimize_tail_calls(value)
+                env[symbol.name] = self.eval(value)
 
             return self._run_continuation(Continuation(env, body))
 
@@ -213,11 +207,14 @@ class Interpreter(object):
 
     @special
     def getattr_(self, obj, attr, *default):
-        return getattr(self.symbol(obj), attr.name, *default)
+        if default:
+            default = tuple(self.eval(d) for d in default)
+
+        return getattr(self.eval(obj), attr.name, *default)
 
     @special
     def setattr_(self, obj, attr, value):
-        setattr(self.symbol(obj), attr.name, self.eval(value))
+        setattr(self.eval(obj), attr.name, self.eval(value))
 
     @contextmanager
     def over(self, env):
@@ -252,66 +249,3 @@ class Interpreter(object):
                     value = self.eval(expr)
 
         return value
-
-    def _optimize_tail_calls(self, proc):
-        if not isinstance(proc.body[-1], types.Cons):
-            return
-
-        pos = 0
-        calls = 0
-        cons = proc.body[-1]
-        head = cons
-        prev = []
-        specials = {
-            self.if_: {2, 3},
-            self.let: {-1},
-            self.lambda_: {-1},
-        }
-
-        while cons is not types.Nil:
-            if type(cons.car) is types.Symbol and pos == 0:
-                try:
-                    value = proc.env[cons.car]
-
-                except NameError:
-                    # Free variables, no way to know what happens with these
-                    calls += 1
-
-                else:
-                    if (
-                        # Obvious
-                        value is proc and
-                        # All previous calls, if any, have been special
-                        calls == 0 and
-                        (
-                            # Self is body
-                            not prev or
-                            # Previous call was special and Self is in correct
-                            # position
-                            prev[-1][2] in specials[proc.env[prev[-1][0].car]]
-                        )
-                    ):
-                        # Tail position! Do some rewriting
-                        cons.car = self.recur
-                        # Insert a reference to procedure as 1. arg
-                        cons.cdr = self.cons(proc, cons.cdr)
-
-                    if value in specials:
-                        pass
-
-                    else:
-                        calls += 1
-
-            elif type(cons.car) is types.Cons:
-                prev.append((head, cons, pos, calls))
-                head = cons = cons.car
-                pos = 0
-                continue
-
-            if cons.cdr is types.Nil and prev:
-                head, cons, pos, calls = prev.pop()
-
-            pos += 1
-            cons = cons.cdr
-
-        _log.debug('tail call optimized: %s', proc.body)

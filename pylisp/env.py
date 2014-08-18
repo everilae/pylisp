@@ -14,25 +14,23 @@ class PythonBuiltins(object):
         return None
 
     def __getitem__(self, symbol):
-        name = symbol.name
         attr = None
-        if '.' in name:
-            name, attr = name.split('.', 1)
+        if '.' in symbol:
+            symbol, attr = symbol.split('.', 1)
 
-        if hasattr(builtins, name):
-            value = getattr(builtins, name)
+        if hasattr(builtins, symbol):
+            value = getattr(builtins, symbol)
 
             if attr:
                 value = getattr(value, attr)
 
         else:
-            raise NameError(name)
+            raise NameError(symbol)
 
         return value
 
     def __contains__(self, symbol):
-        name = symbol.name
-        return hasattr(builtins, name)
+        return hasattr(builtins, symbol)
 
     def __repr__(self):
         return repr(builtins)

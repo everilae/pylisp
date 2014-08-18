@@ -32,20 +32,6 @@ class Continuation(object):
 
 class Symbol(object):
 
-    _lock = Lock()
-    _table = {}
-
-    @classmethod
-    def get(cls, name):
-        with cls._lock:
-            try:
-                return cls._table[name]
-
-            except KeyError:
-                symbol = cls(name)
-                cls._table[name] = symbol
-                return symbol
-
     __slots__ = ('name',)
 
     def __init__(self, name):
@@ -55,31 +41,16 @@ class Symbol(object):
         return self.name
 
 
-def getsymbol(name):
-    return Symbol.get(name)
-
-
-Nil = Symbol.get('nil')
-
-
 class Cons(object):
 
     __slots__ = ('car', 'cdr')
 
-    def __init__(self, car, cdr=Nil):
+    def __init__(self, car, cdr=None):
         self.car = car
         self.cdr = cdr
 
     def __repr__(self):
-        values = []
-
-        for value in self:
-            values.append(repr(value.car))
-
-        if value.cdr is not Nil:
-            values.extend(['.', repr(value.cdr)])
-
-        return '({})'.format(' '.join(values))
+        return '({})'.format(' '.join(self))
 
     def __iter__(self):
         value = self
