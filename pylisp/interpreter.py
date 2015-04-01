@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, division, print_function
 import copy
 
 import logging
 from functools import reduce, partial
 from contextlib import contextmanager
+from collections import ChainMap
 import operator
 from . import types 
-from .env import Environment, PythonBuiltins
+from .env import PythonBuiltins
 from .utils import MethodDict
 from .types import Procedure, Continuation
 
@@ -27,42 +27,40 @@ class Interpreter(object):
     def __init__(self, env=None):
         # Separate env stack is required, since special methods have
         # no continuation
-        self._envs = [
-            env or Environment(
-                {
-                    'nil': None,
-                    '+': lambda *args: sum(args),
-                    '-': lambda *args: reduce(operator.sub, args),
-                    '*': lambda *args: reduce(operator.mul, args),
-                    '%': operator.mod,
-                    '=': operator.eq,
-                    '!=': operator.ne,
-                    '<': operator.lt,
-                    '>': operator.gt,
-                    '<=': operator.le,
-                    '>=': operator.ge,
-                    '.': self.getattr_,
-                    '.=': self.setattr_,
-                    'eq?': operator.is_,
-                    'set!': self.setbang,
-                    'set-car!': self.setcarbang,
-                    'set-cdr!': self.setcdrbang,
-                    'if': self.if_,
-                    'define': self.define,
-                    'eval': self.eval,
-                    'quote': self.quote,
-                    'lambda': self.lambda_,
-                    'list': self.list,
-                    'car': self.car,
-                    'cdr': self.cdr,
-                    'let': self.let,
-                    'cons': self.cons,
-                    'begin': self.begin,
-                    'call/cc': self.call_cc,
-                },
-                env=PythonBuiltins()
-            )
-        ]
+        self._envs = env or ChainMap(
+            {
+                'nil': None,
+                '+': lambda *args: sum(args),
+                '-': lambda *args: reduce(operator.sub, args),
+                '*': lambda *args: reduce(operator.mul, args),
+                '%': operator.mod,
+                '=': operator.eq,
+                '!=': operator.ne,
+                '<': operator.lt,
+                '>': operator.gt,
+                '<=': operator.le,
+                '>=': operator.ge,
+                '.': self.getattr_,
+                '.=': self.setattr_,
+                'eq?': operator.is_,
+                'set!': self.setbang,
+                'set-car!': self.setcarbang,
+                'set-cdr!': self.setcdrbang,
+                'if': self.if_,
+                'define': self.define,
+                'eval': self.eval,
+                'quote': self.quote,
+                'lambda': self.lambda_,
+                'list': self.list,
+                'car': self.car,
+                'cdr': self.cdr,
+                'let': self.let,
+                'cons': self.cons,
+                'begin': self.begin,
+                'call/cc': self.call_cc,
+            },
+            PythonBuiltins()
+        )
         self._nil = None
         self._currcontinuation = None
 
@@ -93,7 +91,7 @@ class Interpreter(object):
 
     @lookup.annotate(types.Symbol)
     def symbol(self, symbol):
-        return self._envs[-1][symbol.name]
+        return self._envs[symbol.name]
 
     @special
     def begin(self, *exprs):
@@ -109,13 +107,10 @@ class Interpreter(object):
         if not isinstance(symbol, types.Symbol):
             raise TypeError("{!r} is not a symbol".format(symbol))
 
-        env = self._envs[-1]
-        while env:
+        for env in self._envs.maps:
             if symbol.name in env:
                 env[symbol.name] = self.eval(value)
                 return
-
-            env = env.env
 
         raise NameError("'{}' not defined".format(symbol))
 
@@ -138,8 +133,8 @@ class Interpreter(object):
         else:
             value = self.eval(value[0])
 
-        self._envs[-1][symbol.name] = value
-        self._log.debug('define: %s', self._envs[-1])
+        self._envs[symbol.name] = value
+        self._log.debug('define: %s', self._envs)
 
     @special
     def quote(self, value):
@@ -153,7 +148,7 @@ class Interpreter(object):
         else:
             args = tuple(c.car.name for c in args)
 
-        return Procedure(None, args, body, self._envs[-1])
+        return Procedure(None, args, body, self._envs)
 
     @special
     def call_cc(self, fun):
@@ -162,8 +157,11 @@ class Interpreter(object):
     @special
     def jump(self, proc, *args):
         # Build a new calling environment
-        env = Environment(dict(zip(proc.args, map(self.eval, args))),
-                          env=proc.env)
+        env = self._envs.new_child(
+            proc.env
+        ).new_child(
+            dict(zip(proc.args, map(self.eval, args)))
+        )
         # Return a new continuation (reset to start of proc)
         return Continuation(env, proc.body)
 
@@ -181,18 +179,18 @@ class Interpreter(object):
 
     @special
     def setcarbang(self, symbol, value):
-        self._envs[-1][symbol.name].car = self.eval(value)
+        self._envs[symbol.name].car = self.eval(value)
 
     def cdr(self, cons):
         return cons.cdr
 
     @special
     def setcdrbang(self, symbol, value):
-        self._envs[-1][symbol.name].cdr = self.eval(value)
+        self._envs[symbol.name].cdr = self.eval(value)
 
     @special
     def let(self, defs, *body):
-        env = Environment(env=self._envs[-1])
+        env = self._envs.new_child()
 
         with self.over(env):
             for d in defs:
@@ -218,20 +216,26 @@ class Interpreter(object):
 
     @contextmanager
     def over(self, env):
-        self._envs.append(env)
+        _envs = self._envs
+        self._envs = env
 
         try:
             yield
 
         finally:
-            self._envs.pop()
+            self._envs = _envs
 
     def _call_procedure(self, proc, *args):
         if len(proc.args) != len(args):
             raise TypeError('expected {} arguments, got {}'.format(
                 len(proc.args), len(args)))
 
-        env = Environment(dict(zip(proc.args, args)), env=proc.env)
+        env = self._envs.new_child(
+            proc.env
+        ).new_child(
+            dict(zip(proc.args, args))
+        )
+
         continuation = Continuation(env, proc.body)
         return self._run_continuation(continuation)
 
